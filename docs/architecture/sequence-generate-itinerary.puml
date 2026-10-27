@@ -1,0 +1,74 @@
+@startuml Sequence_Generate_Itinerary
+title Diagrama de Secuencia - Generación de Itinerario Optimizado (Demostrando Colaboración entre Microservicios)
+
+actor "Usuario" as User
+participant "API Gateway" as Gateway
+participant "Keycloak" as KC
+participant "itinerary-service" as Itinerary
+participant "poi-service" as POI
+participant "Overpass API" as Overpass
+participant "OSRM" as OSRM
+database "PostgreSQL" as DB
+
+User -> Gateway: POST /api/itinerary/generate\n{startPoint, availableTime, preferences, radius, transportMode}
+activate Gateway
+
+Gateway -> KC: Validar token JWT (JWKS)\n(opcional o requerido según endpoint)
+activate KC
+KC --> Gateway: Token válido + roles
+deactivate KC
+
+Gateway -> Itinerary: Enrutar solicitud\n+ headers de autenticación
+activate Itinerary
+
+note over Itinerary: Inicia orquestación del itinerario
+
+Itinerary -> POI: GET /internal/pois/candidates\n{lat, lng, radius, categories}
+activate POI
+
+note over POI: Búsqueda de POIs candidatos
+
+POI -> Overpass: POST /api/interpreter\n[Overpass QL query]
+activate Overpass
+Overpass --> POI: Respuesta con POIs (nodes/ways)
+deactivate Overpass
+
+POI -> POI: Normalizar y enriquecer datos\n(calcular visitTime estimado)
+
+POI --> Itinerary: Lista de POIs candidatos normalizados
+deactivate POI
+
+note over Itinerary: POIs obtenidos vía colaboración\nentre itinerary-service y poi-service
+
+Itinerary -> OSRM: GET /table/v1/{profile}/{coords}\nMatriz origen + todos los candidatos
+activate OSRM
+OSRM --> Itinerary: Matriz de duraciones y distancias
+deactivate OSRM
+
+note over Itinerary: Aplica motor de optimización\n1. Calcular scoring por POI\n2. Algoritmo Greedy\n3. Verificar viabilidad temporal (RN-01)\n4. Ordenar secuencialmente
+
+Itinerary -> Itinerary: Generar itinerario optimizado\ncon horarios estimados
+
+alt Usuario autenticado y desea guardar
+  Itinerary -> DB: Persistir itinerario\n(itinerary_schema)
+  activate DB
+  DB --> Itinerary: Itinerario guardado
+  deactivate DB
+end
+
+Itinerary --> Gateway: ItineraryResponseDto\n{route, totalTime, totalVisitTime, totalTravelTime}
+deactivate Itinerary
+
+Gateway --> User: 200 OK\nItinerario optimizado
+deactivate Gateway
+
+note right of User
+  Respuesta incluye:
+  - Ruta ordenada con paradas
+  - Tiempos de traslado reales
+  - Horarios estimados
+  - Detalles de cada POI
+  - Validación de viabilidad temporal
+end note
+
+@enduml

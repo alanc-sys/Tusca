@@ -1,0 +1,30 @@
+@startuml C1_Context_RutaTur
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Diagrama de Contexto (C1) - RutaTur: Motor de Rutas Turísticas y Optimización de Puntos de Interés
+
+' Actores
+Person(turista, "Turista / Usuario Final", "Usuario que desea generar itinerarios turísticos optimizados personalizados")
+Person(admin, "Administrador", "Gestiona configuración, caché y monitoreo del sistema")
+
+' Sistema Principal
+System(rutatur, "RutaTur Backend", "Sistema que genera itinerarios turísticos optimizados con tiempos de traslado reales, basado en preferencias temáticas del usuario")
+
+' Sistemas Externos
+System_Ext(keycloak, "Keycloak Identity Provider", "Proveedor de identidad. Autenticación, autorización, OpenID Connect, emisión de tokens JWT y gestión de roles")
+System_Ext(overpass, "Overpass API (OpenStreetMap)", "API pública para consulta de Puntos de Interés por ubicación, radio y categorías")
+System_Ext(osrm, "OSRM - Open Source Routing Machine", "Servicio de ruteo para cálculo de matriz de distancias y tiempos de viaje entre coordenadas")
+
+' Relaciones
+Rel(turista, rutatur, "Genera itinerarios, guarda historial", "HTTPS/REST")
+Rel(admin, rutatur, "Administra sistema", "HTTPS/REST")
+
+Rel(rutatur, keycloak, "Autentica usuarios, valida tokens JWT, obtiene roles", "OIDC / HTTPS")
+Rel(rutatur, overpass, "Busca POIs por ubicación/radio/categorías", "HTTPS/Overpass QL")
+Rel(rutatur, osrm, "Solicita matriz origen-destino para cálculo de tiempos reales", "HTTPS/REST")
+
+SHOW_LEGEND()
+
+@enduml

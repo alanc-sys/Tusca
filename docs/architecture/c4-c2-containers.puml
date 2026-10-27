@@ -1,0 +1,59 @@
+@startuml C2_Containers_RutaTur
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Diagrama de Contenedores (C2) - RutaTur Backend
+
+' Actores
+Person(turista, "Turista / Usuario Final", "Usuario que genera itinerarios")
+Person(admin, "Administrador", "Administrador del sistema")
+
+' Sistemas Externos
+System_Ext(keycloak, "Keycloak IdP", "OIDC / JWT / Roles")
+System_Ext(overpass, "Overpass API", "OpenStreetMap POIs")
+System_Ext(osrm, "OSRM", "Servicio de Ruteo")
+
+' Sistema Principal
+System_Boundary(rutatur, "RutaTur Backend") {
+    
+    ' Infraestructura / Gateway
+    Container(gateway, "API Gateway", "Spring Cloud Gateway", "Punto de entrada único. Enrutamiento, Security Filter para validación JWT, CORS")
+    
+    ' Microservicios Funcionales
+    Container(poiService, "poi-service", "Spring Boot 3.x", "Búsqueda, enriquecimiento y caché de POIs. Integración con Overpass API")
+    Container(itineraryService, "itinerary-service", "Spring Boot 3.x", "Orquestación, motor de optimización, colaboración con poi-service, integración con ruteo, persistencia")
+    
+    ' Componente Común
+    Container(rutaturCommon, "rutatur-common", "Maven JAR", "Componente reutilizable: DTOs, GeoUtils, excepciones, validadores. Usado por poi-service e itinerary-service")
+    
+    ' Persistencia
+    ContainerDb(postgres, "PostgreSQL", "PostgreSQL 15", "Base de datos relacional. Esquemas: poi_schema, itinerary_schema")
+}
+
+' Relaciones Actores
+Rel(turista, gateway, "Consume APIs REST", "HTTPS")
+Rel(admin, gateway, "Administra sistema", "HTTPS")
+
+' Relaciones Gateway
+Rel(gateway, keycloak, "Valida tokens JWT (JWKS)", "HTTPS")
+Rel(gateway, poiService, "Enruta requests", "HTTP/JSON")
+Rel(gateway, itineraryService, "Enruta requests", "HTTP/JSON")
+
+' Relaciones Microservicios
+Rel(itineraryService, poiService, "Obtiene candidatos de POIs", "HTTP/JSON (REST interno)")
+Rel(poiService, overpass, "Consulta POIs por ubicación/radio/categorías", "HTTPS/Overpass QL")
+Rel(itineraryService, osrm, "Solicita matriz origen-destino", "HTTPS/REST")
+Rel(itineraryService, keycloak, "Valida roles/autorización", "OIDC/JWT")
+
+' Persistencia
+Rel(poiService, postgres, "Lee/Escribe caché POIs", "JDBC")
+Rel(itineraryService, postgres, "Persiste itinerarios", "JDBC")
+
+' Componente Común
+Rel(poiService, rutaturCommon, "Usa DTOs, utilidades, excepciones", "Maven Dependency")
+Rel(itineraryService, rutaturCommon, "Usa DTOs, utilidades, excepciones", "Maven Dependency")
+
+SHOW_LEGEND()
+
+@enduml
