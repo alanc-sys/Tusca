@@ -1,0 +1,8 @@
+# Maven build output
+target/
+
+# Local SDD registry cache
+.atl/
+
+# Local environment secrets (see docs/deployment/README.md)
+.env
