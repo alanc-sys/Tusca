@@ -16,7 +16,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Search pipeline: fresh cache → Overpass → normalize → persist → response, with stale cache as the
@@ -29,6 +28,7 @@ public class PoiSearchService {
     private final PoiNormalizer normalizer;
     private final CacheKeyFactory cacheKeyFactory;
     private final PoiCacheRepository repository;
+    private final PoiCacheWriter writer;
     private final PoiProperties properties;
 
     public PoiSearchService(
@@ -36,15 +36,16 @@ public class PoiSearchService {
             PoiNormalizer normalizer,
             CacheKeyFactory cacheKeyFactory,
             PoiCacheRepository repository,
+            PoiCacheWriter writer,
             PoiProperties properties) {
         this.overpassClient = overpassClient;
         this.normalizer = normalizer;
         this.cacheKeyFactory = cacheKeyFactory;
         this.repository = repository;
+        this.writer = writer;
         this.properties = properties;
     }
 
-    @Transactional
     public PoiSearchResponse search(double lat, double lng, int radius, List<Category> categories) {
         String key = cacheKeyFactory.key(lat, lng, radius, categories);
         List<PoiDto> fresh = toPois(repository.findByQueryKeyAndExpiresAtAfter(key, Instant.now()));
@@ -69,7 +70,6 @@ public class PoiSearchService {
     private void store(String key, List<PoiDto> pois) {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(properties.cacheTtl());
-        repository.deleteByQueryKeyValue(key);
         List<PoiCacheEntity> rows = pois.stream()
                 .map(poi -> new PoiCacheEntity(
                         key,
@@ -85,7 +85,7 @@ public class PoiSearchService {
                         now,
                         expiresAt))
                 .toList();
-        repository.saveAll(rows);
+        writer.replace(key, rows);
     }
 
     private static List<PoiDto> toPois(List<PoiCacheEntity> rows) {

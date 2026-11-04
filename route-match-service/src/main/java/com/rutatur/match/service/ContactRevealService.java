@@ -14,7 +14,6 @@ import com.rutatur.match.persistence.UserContactViewRepository;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Contact reveal for accepted participants only. Keycloak is read before the audit row is written,
@@ -42,7 +41,6 @@ public class ContactRevealService {
         this.clock = clock;
     }
 
-    @Transactional
     public ContactDto reveal(UUID matchId, String viewerUserId) {
         RouteMatchEntity match = routeMatchRepository.findById(matchId)
                 .orElseThrow(() -> new ResourceNotFoundException(

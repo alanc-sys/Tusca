@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Opt-in publication. The itinerary snapshot is read first, ownership is checked against the JWT
@@ -41,7 +40,6 @@ public class ShareService {
         this.clock = clock;
     }
 
-    @Transactional
     public ShareResult share(UUID itineraryId, String userId) {
         InternalItineraryDto detail = itineraryClient.detail(itineraryId);
         if (!detail.ownerUserId().equals(userId)) {

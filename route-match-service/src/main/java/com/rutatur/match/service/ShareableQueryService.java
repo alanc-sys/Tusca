@@ -13,7 +13,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /** The caller's itineraries annotated with their share state, so published routes stand out. */
 @Service
@@ -32,7 +31,6 @@ public class ShareableQueryService {
         this.clock = clock;
     }
 
-    @Transactional(readOnly = true)
     public List<ShareableItineraryDto> shareable(String userId) {
         List<InternalItinerarySummary> summaries = itineraryClient.summaries(userId);
         Map<UUID, SharedRouteEntity> shares = sharedRouteRepository.findByOwnerUserId(userId).stream()
