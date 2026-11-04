@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 class MatchRequestTest {
 
@@ -39,10 +40,12 @@ class MatchRequestTest {
 
     private final SharedRouteRepository sharedRouteRepository = mock(SharedRouteRepository.class);
     private final RouteMatchRepository routeMatchRepository = mock(RouteMatchRepository.class);
+    private final MatchRequestWriter writer = mock(MatchRequestWriter.class);
     private final SuggestionService suggestionService = mock(SuggestionService.class);
     private final MatchRequestService service = new MatchRequestService(
             sharedRouteRepository,
             routeMatchRepository,
+            writer,
             suggestionService,
             new MatchMapper(),
             CLOCK);
@@ -62,8 +65,7 @@ class MatchRequestTest {
         when(suggestionService.bestPair(eq(CALLER), any(), any()))
                 .thenReturn(new SuggestionService.ScoredPair(
                         callerProfile, new BigDecimal("0.5000"), List.of("p1")));
-        when(routeMatchRepository.saveAndFlush(any()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(writer.insert(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -102,7 +104,42 @@ class MatchRequestTest {
 
         assertThat(result.created()).isFalse();
         assertThat(result.dto().id()).isEqualTo(existing.getId());
-        verify(routeMatchRepository, never()).saveAndFlush(any());
+        verify(writer, never()).insert(any());
+    }
+
+    @Test
+    void duplicateInsertRaceReturnsThePendingMatchCreatedByTheWinner() {
+        RouteMatchEntity winner = new RouteMatchEntity(
+                UUID.randomUUID(),
+                CALLER,
+                "responder-sub",
+                callerProfile.id(),
+                target.getId(),
+                new BigDecimal("0.5000"),
+                1,
+                List.of("p1"),
+                MatchStatus.PENDING,
+                NOW);
+        when(routeMatchRepository.findFirstByRequesterUserIdAndSharedRouteBIdAndStatus(
+                        CALLER, target.getId(), MatchStatus.PENDING))
+                .thenReturn(Optional.empty(), Optional.of(winner));
+        when(writer.insert(any()))
+                .thenThrow(new DataIntegrityViolationException("duplicate request"));
+
+        MatchRequestService.RequestResult result = service.request(CALLER, target.getId());
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.dto().id()).isEqualTo(winner.getId());
+        assertThat(result.dto().status()).isEqualTo(MatchStatus.PENDING);
+    }
+
+    @Test
+    void duplicateInsertWithoutAPendingWinnerPropagatesTheConflict() {
+        when(writer.insert(any()))
+                .thenThrow(new DataIntegrityViolationException("duplicate request"));
+
+        assertThatThrownBy(() -> service.request(CALLER, target.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -135,7 +172,7 @@ class MatchRequestTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getCode())
                 .isEqualTo(ErrorCode.NO_ACTIVE_SHARE);
-        verify(routeMatchRepository, never()).saveAndFlush(any());
+        verify(writer, never()).insert(any());
     }
 
     private static SharedRouteEntity share(String owner, boolean active, Instant expiresAt) {

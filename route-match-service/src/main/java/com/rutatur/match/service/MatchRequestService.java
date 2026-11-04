@@ -17,7 +17,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Creates a {@code PENDING} request against another user's active share. The score is recomputed
@@ -29,6 +28,7 @@ public class MatchRequestService {
 
     private final SharedRouteRepository sharedRouteRepository;
     private final RouteMatchRepository routeMatchRepository;
+    private final MatchRequestWriter writer;
     private final SuggestionService suggestionService;
     private final MatchMapper mapper;
     private final Clock clock;
@@ -36,17 +36,18 @@ public class MatchRequestService {
     public MatchRequestService(
             SharedRouteRepository sharedRouteRepository,
             RouteMatchRepository routeMatchRepository,
+            MatchRequestWriter writer,
             SuggestionService suggestionService,
             MatchMapper mapper,
             Clock clock) {
         this.sharedRouteRepository = sharedRouteRepository;
         this.routeMatchRepository = routeMatchRepository;
+        this.writer = writer;
         this.suggestionService = suggestionService;
         this.mapper = mapper;
         this.clock = clock;
     }
 
-    @Transactional
     public RequestResult request(String requesterUserId, UUID targetRouteId) {
         Instant now = clock.instant();
         SharedRouteEntity target = sharedRouteRepository.findById(targetRouteId)
@@ -83,13 +84,13 @@ public class MatchRequestService {
                 MatchStatus.PENDING,
                 now);
         try {
-            return new RequestResult(mapper.toDto(routeMatchRepository.saveAndFlush(entity)), true);
+            return new RequestResult(mapper.toDto(writer.insert(entity)), true);
         } catch (DataIntegrityViolationException ex) {
-            RouteMatchEntity existing = routeMatchRepository
+            return routeMatchRepository
                     .findFirstByRequesterUserIdAndSharedRouteBIdAndStatus(
                             requesterUserId, targetRouteId, MatchStatus.PENDING)
+                    .map(existing -> new RequestResult(mapper.toDto(existing), false))
                     .orElseThrow(() -> ex);
-            return new RequestResult(mapper.toDto(existing), false);
         }
     }
 
