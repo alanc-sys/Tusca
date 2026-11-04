@@ -1,14 +1,18 @@
 package com.rutatur.match.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.rutatur.common.dto.ContactDto;
 import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.match.config.MatchProperties;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -16,33 +20,51 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
  * Keycloak Admin lookup used only after mutual acceptance. The service account holds the
- * realm-management {@code view-users} role; no contact data is stored locally.
+ * realm-management {@code view-users} role; no contact data is stored locally. The
+ * client-credentials token is cached until shortly before expiry.
  */
 @Component
 public class KeycloakAdminClient {
 
     private static final Logger log = LoggerFactory.getLogger(KeycloakAdminClient.class);
     private static final Duration RETRY_BACKOFF = Duration.ofMillis(300);
+    private static final long TOKEN_EXPIRY_SKEW_SECONDS = 30;
+    private static final long DEFAULT_TOKEN_TTL_SECONDS = 60;
 
     private final RestClient restClient;
     private final MatchProperties properties;
+    private final Clock clock;
 
+    private volatile String cachedToken;
+    private volatile Instant cachedTokenValidUntil = Instant.EPOCH;
+
+    @Autowired
     public KeycloakAdminClient(RestClient.Builder builder, MatchProperties properties) {
+        this(buildRestClient(builder, properties), properties, Clock.systemUTC());
+    }
+
+    KeycloakAdminClient(RestClient restClient, MatchProperties properties, Clock clock) {
+        this.restClient = restClient;
+        this.properties = properties;
+        this.clock = clock;
+    }
+
+    private static RestClient buildRestClient(RestClient.Builder builder, MatchProperties properties) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
         requestFactory.setReadTimeout(properties.readTimeout());
-        this.restClient = builder.baseUrl(trimSlash(properties.keycloakAdminUrl()))
+        return builder.baseUrl(trimSlash(properties.keycloakAdminUrl()))
                 .requestFactory(requestFactory)
                 .build();
-        this.properties = properties;
     }
 
     public ContactDto lookupUser(String userId) {
-        RuntimeException lastFailure = null;
+        RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 String accessToken = fetchToken();
@@ -56,10 +78,9 @@ public class KeycloakAdminClient {
                             ErrorCode.CONTACT_PROVIDER_UNAVAILABLE, "Contact provider is unavailable");
                 }
                 return new ContactDto(user.id(), user.username(), user.email());
-            } catch (RestClientResponseException | ResourceAccessException ex) {
+            } catch (RestClientException ex) {
                 lastFailure = ex;
-                if (ex instanceof RestClientResponseException responseException
-                        && responseException.getStatusCode().value() < 500) {
+                if (!isRetryable(ex)) {
                     break;
                 }
             }
@@ -73,7 +94,12 @@ public class KeycloakAdminClient {
                 ErrorCode.CONTACT_PROVIDER_UNAVAILABLE, "Contact provider is unavailable", lastFailure);
     }
 
-    private String fetchToken() {
+    private synchronized String fetchToken() {
+        Instant now = clock.instant();
+        if (cachedToken != null && now.isBefore(cachedTokenValidUntil)) {
+            return cachedToken;
+        }
+
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "client_credentials");
         form.add("client_id", properties.keycloakClientId());
@@ -85,11 +111,25 @@ public class KeycloakAdminClient {
                 .body(form)
                 .retrieve()
                 .body(TokenResponse.class);
-        if (token == null || token.accessToken() == null) {
+        if (token == null || token.accessToken() == null || token.accessToken().isBlank()) {
             throw new UpstreamServiceException(
                     ErrorCode.CONTACT_PROVIDER_UNAVAILABLE, "Contact provider is unavailable");
         }
-        return token.accessToken();
+
+        long ttlSeconds = token.expiresIn() == null || token.expiresIn() <= 0
+                ? DEFAULT_TOKEN_TTL_SECONDS
+                : token.expiresIn();
+        cachedToken = token.accessToken();
+        cachedTokenValidUntil = now.plusSeconds(Math.max(1, ttlSeconds - TOKEN_EXPIRY_SKEW_SECONDS));
+        return cachedToken;
+    }
+
+    private static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().value() >= 500;
     }
 
     private static void sleep() {
@@ -106,7 +146,8 @@ public class KeycloakAdminClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record TokenResponse(
-            @com.fasterxml.jackson.annotation.JsonProperty("access_token") String accessToken) {
+            @JsonProperty("access_token") String accessToken,
+            @JsonProperty("expires_in") Long expiresIn) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

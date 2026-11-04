@@ -17,11 +17,13 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
  * OSRM {@code /table} integration. Seconds are rounded half-up to minutes and meters to integers;
  * a {@code null} cell becomes {@link RoutingMatrix#UNREACHABLE}. Euclidean estimates are never used.
+ * A 200 that does not describe the requested square matrix is a contract failure, not an empty matrix.
  */
 @Component
 public class OsrmTableClient {
@@ -41,24 +43,22 @@ public class OsrmTableClient {
     }
 
     public RoutingMatrix table(TransportMode mode, GeoPointDto start, List<PoiDto> orderedCandidates) {
+        int expectedSize = orderedCandidates.size() + 1;
         String coordinates = coordinates(start, orderedCandidates);
         String url = baseUrl + "/table/v1/" + profile(mode) + "/" + coordinates
                 + "?annotations=duration,distance";
 
-        RuntimeException lastFailure = null;
+        RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 JsonNode body = restClient.get().uri(URI.create(url)).retrieve().body(JsonNode.class);
                 if (body == null) {
-                    throw new UpstreamServiceException(
-                            ErrorCode.ROUTING_PROVIDER_UNAVAILABLE, "Routing provider returned no matrix");
+                    throw contractFailure("empty body");
                 }
-                return new RoutingMatrix(
-                        minutesMatrix(body.path("durations")), metersMatrix(body.path("distances")));
-            } catch (RestClientResponseException | ResourceAccessException ex) {
+                return parseMatrix(body, expectedSize);
+            } catch (RestClientException ex) {
                 lastFailure = ex;
-                if (ex instanceof RestClientResponseException responseException
-                        && responseException.getStatusCode().value() < 500) {
+                if (!isRetryable(ex)) {
                     break;
                 }
             }
@@ -69,6 +69,55 @@ public class OsrmTableClient {
         log.warn("Routing matrix failed: {}", lastFailure == null ? "unknown" : lastFailure.getMessage());
         throw new UpstreamServiceException(
                 ErrorCode.ROUTING_PROVIDER_UNAVAILABLE, "Routing provider is unavailable", lastFailure);
+    }
+
+    static RoutingMatrix parseMatrix(JsonNode body, int expectedSize) {
+        return new RoutingMatrix(
+                matrix(body.get("durations"), expectedSize, true, "durations"),
+                matrix(body.get("distances"), expectedSize, false, "distances"));
+    }
+
+    private static int[][] matrix(JsonNode node, int expectedSize, boolean secondsToMinutes, String field) {
+        if (node == null || !node.isArray() || node.size() == 0) {
+            throw contractFailure(field + " is missing or empty");
+        }
+        if (node.size() != expectedSize) {
+            throw contractFailure(
+                    field + " has " + node.size() + " rows but " + expectedSize + " were requested");
+        }
+        int[][] result = new int[expectedSize][expectedSize];
+        for (int i = 0; i < expectedSize; i++) {
+            JsonNode row = node.get(i);
+            if (row == null || !row.isArray() || row.size() != expectedSize) {
+                throw contractFailure(
+                        field + " row " + i + " does not have " + expectedSize + " columns");
+            }
+            for (int j = 0; j < expectedSize; j++) {
+                JsonNode cell = row.get(j);
+                if (cell == null || cell.isNull() || !cell.isNumber()) {
+                    result[i][j] = RoutingMatrix.UNREACHABLE;
+                } else if (secondsToMinutes) {
+                    result[i][j] = (int) Math.round(cell.asDouble() / 60.0);
+                } else {
+                    result[i][j] = (int) Math.round(cell.asDouble());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static UpstreamServiceException contractFailure(String detail) {
+        return new UpstreamServiceException(
+                ErrorCode.ROUTING_PROVIDER_UNAVAILABLE,
+                "Routing provider returned an invalid matrix: " + detail);
+    }
+
+    static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().value() >= 500;
     }
 
     static String profile(TransportMode mode) {
@@ -86,40 +135,6 @@ public class OsrmTableClient {
 
     private static String coordinate(double lng, double lat) {
         return String.format(Locale.ROOT, "%.6f,%.6f", lng, lat);
-    }
-
-    private static int[][] minutesMatrix(JsonNode durations) {
-        return matrix(durations, true);
-    }
-
-    private static int[][] metersMatrix(JsonNode distances) {
-        return matrix(distances, false);
-    }
-
-    private static int[][] matrix(JsonNode node, boolean secondsToMinutes) {
-        if (node == null || !node.isArray()) {
-            return new int[0][0];
-        }
-        int[][] result = new int[node.size()][];
-        for (int i = 0; i < node.size(); i++) {
-            JsonNode row = node.get(i);
-            if (row == null || !row.isArray()) {
-                result[i] = new int[0];
-                continue;
-            }
-            result[i] = new int[row.size()];
-            for (int j = 0; j < row.size(); j++) {
-                JsonNode cell = row.get(j);
-                if (cell == null || cell.isNull() || !cell.isNumber()) {
-                    result[i][j] = RoutingMatrix.UNREACHABLE;
-                } else if (secondsToMinutes) {
-                    result[i][j] = (int) Math.round(cell.asDouble() / 60.0);
-                } else {
-                    result[i][j] = (int) Math.round(cell.asDouble());
-                }
-            }
-        }
-        return result;
     }
 
     private void sleep() {

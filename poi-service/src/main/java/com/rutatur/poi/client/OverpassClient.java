@@ -16,6 +16,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
@@ -45,7 +46,7 @@ public class OverpassClient {
 
     public JsonNode fetch(double lat, double lng, int radius, List<Category> categories) {
         String query = queryBuilder.build(lat, lng, radius, categories);
-        RuntimeException lastFailure = null;
+        RestClientException lastFailure = null;
 
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
@@ -56,14 +57,11 @@ public class OverpassClient {
                         .body(form)
                         .retrieve()
                         .body(JsonNode.class);
-            } catch (RestClientResponseException ex) {
+            } catch (RestClientException ex) {
                 lastFailure = ex;
-                int status = ex.getStatusCode().value();
-                if (status < 500 && status != 429) {
+                if (!isRetryable(ex)) {
                     break;
                 }
-            } catch (ResourceAccessException ex) {
-                lastFailure = ex;
             }
             if (attempt == 1) {
                 sleep();
@@ -73,6 +71,17 @@ public class OverpassClient {
         log.warn("Overpass call failed: {}", lastFailure == null ? "unknown" : lastFailure.getMessage());
         throw new UpstreamServiceException(
                 ErrorCode.POI_PROVIDER_UNAVAILABLE, "POI provider is unavailable", lastFailure);
+    }
+
+    private static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        if (ex instanceof RestClientResponseException responseException) {
+            int status = responseException.getStatusCode().value();
+            return status >= 500 || status == 429;
+        }
+        return false;
     }
 
     private void sleep() {

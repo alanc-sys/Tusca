@@ -14,6 +14,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 /** Candidate lookup through poi-service's internal endpoint; never calls Overpass directly. */
@@ -41,7 +42,7 @@ public class ItineraryPoiClient {
 
     public PoiSearchResponse candidates(double lat, double lng, int radius, List<String> categories) {
         String categoryParam = categories == null ? "" : String.join(",", categories);
-        RuntimeException lastFailure = null;
+        RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 PoiSearchResponse response = restClient.get()
@@ -59,10 +60,9 @@ public class ItineraryPoiClient {
                         .retrieve()
                         .body(PoiSearchResponse.class);
                 return response == null ? new PoiSearchResponse(List.of(), 0) : response;
-            } catch (RestClientResponseException | ResourceAccessException ex) {
+            } catch (RestClientException ex) {
                 lastFailure = ex;
-                if (ex instanceof RestClientResponseException responseException
-                        && responseException.getStatusCode().value() < 500) {
+                if (!isRetryable(ex)) {
                     break;
                 }
             }
@@ -73,6 +73,14 @@ public class ItineraryPoiClient {
         log.warn("Candidate lookup failed: {}", lastFailure == null ? "unknown" : lastFailure.getMessage());
         throw new UpstreamServiceException(
                 ErrorCode.UPSTREAM_UNAVAILABLE, "POI service is unavailable", lastFailure);
+    }
+
+    private static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().value() >= 500;
     }
 
     private void sleep() {

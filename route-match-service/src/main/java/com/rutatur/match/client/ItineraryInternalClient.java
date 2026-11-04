@@ -17,6 +17,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 /** Reads itinerary snapshots through the internal token endpoint; never touches the itinerary schema. */
@@ -33,68 +34,63 @@ public class ItineraryInternalClient {
             RestClient.Builder builder,
             MatchProperties properties,
             @Value("${rutatur.internal-token:}") String internalToken) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(properties.connectTimeout());
-        requestFactory.setReadTimeout(properties.readTimeout());
-        this.restClient = builder.baseUrl(trimSlash(properties.itineraryBaseUrl()))
-                .requestFactory(requestFactory)
-                .build();
+        this(buildRestClient(builder, properties), internalToken);
+    }
+
+    ItineraryInternalClient(RestClient restClient, String internalToken) {
+        this.restClient = restClient;
         this.internalToken = internalToken;
     }
 
+    private static RestClient buildRestClient(RestClient.Builder builder, MatchProperties properties) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.connectTimeout());
+        requestFactory.setReadTimeout(properties.readTimeout());
+        return builder.baseUrl(trimSlash(properties.itineraryBaseUrl()))
+                .requestFactory(requestFactory)
+                .build();
+    }
+
     public InternalItineraryDto detail(UUID itineraryId) {
-        try {
-            InternalItineraryDto body = execute(() -> restClient.get()
-                    .uri("/internal/itineraries/{id}", itineraryId)
-                    .header("X-Internal-Token", internalToken)
-                    .retrieve()
-                    .body(InternalItineraryDto.class));
-            if (body == null) {
-                throw new ResourceNotFoundException(
-                        ErrorCode.ITINERARY_NOT_FOUND, "Itinerary not found");
-            }
-            return body;
-        } catch (ResourceNotFoundException ex) {
-            throw ex;
-        } catch (RuntimeException ex) {
-            throw new UpstreamServiceException(
-                    ErrorCode.UPSTREAM_UNAVAILABLE, "Itinerary service is unavailable", ex);
+        InternalItineraryDto body = execute(() -> restClient.get()
+                .uri("/internal/itineraries/{id}", itineraryId)
+                .header("X-Internal-Token", internalToken)
+                .retrieve()
+                .body(InternalItineraryDto.class));
+        if (body == null) {
+            throw new ResourceNotFoundException(
+                    ErrorCode.ITINERARY_NOT_FOUND, "Itinerary not found");
         }
+        return body;
     }
 
     public List<InternalItinerarySummary> summaries(String ownerUserId) {
-        try {
-            List<InternalItinerarySummary> body = execute(() -> restClient.get()
-                    .uri(uri -> uri.path("/internal/itineraries")
-                            .queryParam("owner", ownerUserId)
-                            .build())
-                    .header("X-Internal-Token", internalToken)
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<List<InternalItinerarySummary>>() {
-                    }));
-            return body == null ? List.of() : body;
-        } catch (RuntimeException ex) {
-            throw new UpstreamServiceException(
-                    ErrorCode.UPSTREAM_UNAVAILABLE, "Itinerary service is unavailable", ex);
-        }
+        List<InternalItinerarySummary> body = execute(() -> restClient.get()
+                .uri(uri -> uri.path("/internal/itineraries")
+                        .queryParam("owner", ownerUserId)
+                        .build())
+                .header("X-Internal-Token", internalToken)
+                .retrieve()
+                .body(new ParameterizedTypeReference<List<InternalItinerarySummary>>() {
+                }));
+        return body == null ? List.of() : body;
     }
 
     private <T> T execute(java.util.function.Supplier<T> call) {
-        RuntimeException lastFailure = null;
+        RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 return call.get();
-            } catch (RestClientResponseException ex) {
-                if (ex.getStatusCode().value() == 404) {
+            } catch (RestClientException ex) {
+                if (ex instanceof RestClientResponseException responseException
+                        && responseException.getStatusCode().value() == 404) {
                     throw new ResourceNotFoundException(
                             ErrorCode.ITINERARY_NOT_FOUND, "Itinerary not found");
                 }
                 lastFailure = ex;
-                if (ex.getStatusCode().value() < 500) {
+                if (!isRetryable(ex)) {
                     break;
                 }
-            } catch (ResourceAccessException ex) {
-                lastFailure = ex;
             }
             if (attempt == 1) {
                 sleep();
@@ -104,6 +100,14 @@ public class ItineraryInternalClient {
                 lastFailure == null ? "unknown" : lastFailure.getMessage());
         throw new UpstreamServiceException(
                 ErrorCode.UPSTREAM_UNAVAILABLE, "Itinerary service is unavailable", lastFailure);
+    }
+
+    private static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().value() >= 500;
     }
 
     private static void sleep() {
