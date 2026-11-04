@@ -9,6 +9,7 @@ import com.rutatur.common.dto.ContactDto;
 import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.match.config.MatchProperties;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,7 +42,8 @@ class KeycloakAdminClientTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://keycloak.test:8080");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         MutableClock clock = new MutableClock(Instant.parse("2026-11-03T12:00:00Z"));
-        KeycloakAdminClient client = new KeycloakAdminClient(builder.build(), PROPERTIES, clock);
+        KeycloakAdminClient client = new KeycloakAdminClient(
+                builder.build(), PROPERTIES, clock, CircuitBreakerRegistry.ofDefaults());
 
         server.expect(requestTo(TOKEN_URL))
                 .andRespond(withSuccess(token("token-1", 300), MediaType.APPLICATION_JSON));
@@ -63,7 +65,8 @@ class KeycloakAdminClientTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://keycloak.test:8080");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         MutableClock clock = new MutableClock(Instant.parse("2026-11-03T12:00:00Z"));
-        KeycloakAdminClient client = new KeycloakAdminClient(builder.build(), PROPERTIES, clock);
+        KeycloakAdminClient client = new KeycloakAdminClient(
+                builder.build(), PROPERTIES, clock, CircuitBreakerRegistry.ofDefaults());
 
         server.expect(requestTo(TOKEN_URL))
                 .andRespond(withSuccess(token("token-1", 60), MediaType.APPLICATION_JSON));
@@ -82,11 +85,33 @@ class KeycloakAdminClientTest {
     }
 
     @Test
+    void openCircuitFailsFastWithoutCallingKeycloak() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("http://keycloak.test:8080");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
+        registry.circuitBreaker("keycloak").transitionToOpenState();
+        KeycloakAdminClient client = new KeycloakAdminClient(
+                builder.build(),
+                PROPERTIES,
+                new MutableClock(Instant.parse("2026-11-03T12:00:00Z")),
+                registry);
+
+        assertThatThrownBy(() -> client.lookupUser("user-1"))
+                .isInstanceOf(UpstreamServiceException.class)
+                .extracting(ex -> ((UpstreamServiceException) ex).getCode())
+                .isEqualTo(ErrorCode.CONTACT_PROVIDER_UNAVAILABLE);
+        server.verify();
+    }
+
+    @Test
     void undecodableTokenBodyBecomesContactProviderUnavailable() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://keycloak.test:8080");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         KeycloakAdminClient client = new KeycloakAdminClient(
-                builder.build(), PROPERTIES, new MutableClock(Instant.parse("2026-11-03T12:00:00Z")));
+                builder.build(),
+                PROPERTIES,
+                new MutableClock(Instant.parse("2026-11-03T12:00:00Z")),
+                CircuitBreakerRegistry.ofDefaults());
 
         server.expect(requestTo(TOKEN_URL))
                 .andRespond(withSuccess("not-json", MediaType.TEXT_PLAIN));

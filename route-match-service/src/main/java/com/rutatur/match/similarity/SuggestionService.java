@@ -89,11 +89,20 @@ public class SuggestionService {
         for (SharedRouteEntity candidate : callerShares) {
             RouteProfile profile = RouteProfile.from(candidate);
             BigDecimal score = scorer.score(profile, target);
-            if (best == null || score.compareTo(best.score()) > 0) {
+            if (best == null || isBetter(profile, score, best)) {
                 best = new ScoredPair(profile, score, scorer.matchedPoiIds(profile, target));
             }
         }
         return best;
+    }
+
+    /** Highest score wins; equal scores resolve to the lowest route id, so ties are total. */
+    private static boolean isBetter(RouteProfile candidate, BigDecimal score, ScoredPair best) {
+        int byScore = score.compareTo(best.score());
+        if (byScore != 0) {
+            return byScore > 0;
+        }
+        return candidate.id().compareTo(best.source().id()) < 0;
     }
 
     /** Best caller share and its similarity to a target share. */

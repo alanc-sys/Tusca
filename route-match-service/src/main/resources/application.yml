@@ -30,6 +30,28 @@ rutatur:
   security:
     jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
 
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        failure-rate-threshold: 50
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: false
+        ignore-exceptions:
+          - com.rutatur.common.exception.ResourceNotFoundException
+          - com.rutatur.common.exception.BusinessException
+          - com.rutatur.common.exception.ForbiddenActionException
+    instances:
+      itineraryService:
+        base-config: default
+      keycloak:
+        base-config: default
+
 management:
   endpoints:
     web:

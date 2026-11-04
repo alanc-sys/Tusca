@@ -16,4 +16,8 @@ public interface PoiCacheRepository extends JpaRepository<PoiCacheEntity, PoiCac
     @Modifying
     @Query("delete from PoiCacheEntity p where p.queryKey = :queryKey")
     int deleteByQueryKeyValue(@Param("queryKey") String queryKey);
+
+    @Modifying
+    @Query("delete from PoiCacheEntity p where p.expiresAt < :cutoff")
+    int deleteExpiredBefore(@Param("cutoff") Instant cutoff);
 }

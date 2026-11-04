@@ -7,6 +7,9 @@ import com.rutatur.common.enums.TransportMode;
 import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.itinerary.config.ItineraryProperties;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -29,20 +32,37 @@ import org.springframework.web.client.RestClientResponseException;
 public class OsrmTableClient {
 
     private static final Logger log = LoggerFactory.getLogger(OsrmTableClient.class);
+    private static final String CIRCUIT_NAME = "osrm";
 
     private final RestClient restClient;
     private final String baseUrl;
+    private final CircuitBreaker circuitBreaker;
     private final Duration retryBackoff = Duration.ofMillis(300);
 
-    public OsrmTableClient(RestClient.Builder builder, ItineraryProperties properties) {
+    public OsrmTableClient(
+            RestClient.Builder builder,
+            ItineraryProperties properties,
+            CircuitBreakerRegistry circuitBreakerRegistry) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
         requestFactory.setReadTimeout(properties.readTimeout());
         this.restClient = builder.requestFactory(requestFactory).build();
         this.baseUrl = trimSlash(properties.osrmBaseUrl());
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
     }
 
     public RoutingMatrix table(TransportMode mode, GeoPointDto start, List<PoiDto> orderedCandidates) {
+        try {
+            return circuitBreaker.executeSupplier(() -> tableWithRetry(mode, start, orderedCandidates));
+        } catch (CallNotPermittedException ex) {
+            log.warn("OSRM circuit is open; skipping the call");
+            throw new UpstreamServiceException(
+                    ErrorCode.ROUTING_PROVIDER_UNAVAILABLE, "Routing provider is unavailable", ex);
+        }
+    }
+
+    private RoutingMatrix tableWithRetry(
+            TransportMode mode, GeoPointDto start, List<PoiDto> orderedCandidates) {
         int expectedSize = orderedCandidates.size() + 1;
         String coordinates = coordinates(start, orderedCandidates);
         String url = baseUrl + "/table/v1/" + profile(mode) + "/" + coordinates

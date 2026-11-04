@@ -9,6 +9,7 @@ import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.ResourceNotFoundException;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.match.config.MatchProperties;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -33,7 +34,8 @@ class ItineraryInternalClientTest {
     void upstreamNotFoundStaysANotFound() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://itinerary.test:8082");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        ItineraryInternalClient client = new ItineraryInternalClient(builder.build(), "token");
+        ItineraryInternalClient client = new ItineraryInternalClient(
+                builder.build(), "token", CircuitBreakerRegistry.ofDefaults());
         UUID itineraryId = UUID.randomUUID();
         server.expect(requestTo("http://itinerary.test:8082/internal/itineraries/" + itineraryId))
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
@@ -46,10 +48,27 @@ class ItineraryInternalClientTest {
     }
 
     @Test
+    void openCircuitFailsFastWithoutCallingTheUpstream() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("http://itinerary.test:8082");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
+        registry.circuitBreaker("itineraryService").transitionToOpenState();
+        ItineraryInternalClient client =
+                new ItineraryInternalClient(builder.build(), "token", registry);
+
+        assertThatThrownBy(() -> client.detail(UUID.randomUUID()))
+                .isInstanceOf(UpstreamServiceException.class)
+                .extracting(ex -> ((UpstreamServiceException) ex).getCode())
+                .isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE);
+        server.verify();
+    }
+
+    @Test
     void undecodableBodyBecomesUpstreamUnavailable() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://itinerary.test:8082");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        ItineraryInternalClient client = new ItineraryInternalClient(builder.build(), "token");
+        ItineraryInternalClient client = new ItineraryInternalClient(
+                builder.build(), "token", CircuitBreakerRegistry.ofDefaults());
         UUID itineraryId = UUID.randomUUID();
         server.expect(requestTo("http://itinerary.test:8082/internal/itineraries/" + itineraryId))
                 .andRespond(withSuccess("not-json", MediaType.TEXT_PLAIN));

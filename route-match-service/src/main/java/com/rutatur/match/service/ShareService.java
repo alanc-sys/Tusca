@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -75,7 +76,17 @@ public class ShareService {
                 true,
                 now,
                 expiresAt);
-        return new ShareResult(toDto(sharedRouteRepository.save(entity)), true);
+        try {
+            return new ShareResult(toDto(sharedRouteRepository.save(entity)), true);
+        } catch (DataIntegrityViolationException ex) {
+            // Two concurrent shares for the same itinerary: the loser reads the winner's row.
+            SharedRouteEntity raced = sharedRouteRepository.findByItineraryId(itineraryId)
+                    .orElseThrow(() -> ex);
+            if (!raced.getOwnerUserId().equals(userId)) {
+                throw new ResourceNotFoundException(ErrorCode.SHARE_NOT_FOUND, "Share not found");
+            }
+            return new ShareResult(toDto(raced), false);
+        }
     }
 
     private SharedRouteDto toDto(SharedRouteEntity entity) {

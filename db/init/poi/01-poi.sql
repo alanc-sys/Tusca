@@ -23,3 +23,14 @@ CREATE TABLE IF NOT EXISTS poi_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_poi_cache_lookup ON poi_cache (query_key, expires_at);
+
+-- One row per query key: records how many POIs a query resolved to, including zero,
+-- so an empty result is cached instead of calling Overpass on every request.
+CREATE TABLE IF NOT EXISTS poi_query_cache (
+  query_key    varchar(64) PRIMARY KEY,
+  result_count integer     NOT NULL CHECK (result_count >= 0),
+  cached_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_poi_query_cache_expiry ON poi_query_cache (expires_at);

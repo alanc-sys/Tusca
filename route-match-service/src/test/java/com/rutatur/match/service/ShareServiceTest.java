@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.Test;
 
 class ShareServiceTest {
@@ -117,6 +118,19 @@ class ShareServiceTest {
         assertThat(result.dto().active()).isTrue();
         assertThat(result.dto().expiresAt()).isEqualTo(NOW.plus(Duration.ofDays(7)));
         verify(repository).save(expired);
+    }
+
+    @Test
+    void concurrentShareAbsorbsTheUniqueConstraintRace() {
+        SharedRouteEntity winner = share(true, NOW.plusSeconds(3600));
+        when(repository.findByItineraryId(itineraryId))
+                .thenReturn(Optional.empty(), Optional.of(winner));
+        when(repository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        ShareService.ShareResult result = service.share(itineraryId, OWNER);
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.dto().id()).isEqualTo(winner.getId());
     }
 
     @Test

@@ -96,6 +96,24 @@ class SuggestionServiceTest {
     }
 
     @Test
+    void bestPairBreaksScoreTiesByLowestRouteId() {
+        UUID lower = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID higher = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        SharedRouteEntity highId = shareWithId(higher, "caller", "p1");
+        SharedRouteEntity lowId = shareWithId(lower, "caller", "p2");
+        when(repository.findActiveByOwner(eq("caller"), any()))
+                .thenReturn(List.of(highId, lowId));
+        reset(scorer);
+        when(scorer.score(any(), any())).thenReturn(new BigDecimal("0.5000"));
+        when(scorer.matchedPoiIds(any(), any())).thenReturn(List.of());
+
+        SuggestionService.ScoredPair pair =
+                service.bestPair("caller", RouteProfile.from(highId), NOW);
+
+        assertThat(pair.source().id()).isEqualTo(lower);
+    }
+
+    @Test
     void breaksScoreTiesByTargetRouteIdAscending() {
         reset(scorer);
         when(scorer.score(any(), any())).thenReturn(new BigDecimal("0.5000"));
@@ -118,8 +136,12 @@ class SuggestionServiceTest {
     }
 
     private static SharedRouteEntity share(String owner, String... poiIds) {
+        return shareWithId(UUID.randomUUID(), owner, poiIds);
+    }
+
+    private static SharedRouteEntity shareWithId(UUID id, String owner, String... poiIds) {
         return new SharedRouteEntity(
-                UUID.randomUUID(),
+                id,
                 UUID.randomUUID(),
                 owner,
                 BigDecimal.valueOf(-34.6037),

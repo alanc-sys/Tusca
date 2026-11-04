@@ -4,6 +4,9 @@ import com.rutatur.common.dto.PoiSearchResponse;
 import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.itinerary.config.ItineraryProperties;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,15 +25,18 @@ import org.springframework.web.client.RestClientResponseException;
 public class ItineraryPoiClient {
 
     private static final Logger log = LoggerFactory.getLogger(ItineraryPoiClient.class);
+    private static final String CIRCUIT_NAME = "poiService";
 
     private final RestClient restClient;
     private final String internalToken;
+    private final CircuitBreaker circuitBreaker;
     private final Duration retryBackoff = Duration.ofMillis(500);
 
     public ItineraryPoiClient(
             RestClient.Builder builder,
             ItineraryProperties properties,
-            @Value("${rutatur.internal-token:}") String internalToken) {
+            @Value("${rutatur.internal-token}") String internalToken,
+            CircuitBreakerRegistry circuitBreakerRegistry) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
         requestFactory.setReadTimeout(properties.readTimeout());
@@ -38,9 +44,22 @@ public class ItineraryPoiClient {
                 .requestFactory(requestFactory)
                 .build();
         this.internalToken = internalToken;
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
     }
 
     public PoiSearchResponse candidates(double lat, double lng, int radius, List<String> categories) {
+        try {
+            return circuitBreaker.executeSupplier(
+                    () -> candidatesWithRetry(lat, lng, radius, categories));
+        } catch (CallNotPermittedException ex) {
+            log.warn("POI circuit is open; skipping the call");
+            throw new UpstreamServiceException(
+                    ErrorCode.UPSTREAM_UNAVAILABLE, "POI service is unavailable", ex);
+        }
+    }
+
+    private PoiSearchResponse candidatesWithRetry(
+            double lat, double lng, int radius, List<String> categories) {
         String categoryParam = categories == null ? "" : String.join(",", categories);
         RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {

@@ -6,6 +6,9 @@ import com.rutatur.common.dto.ContactDto;
 import com.rutatur.common.error.ErrorCode;
 import com.rutatur.common.exception.UpstreamServiceException;
 import com.rutatur.match.config.MatchProperties;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,23 +38,33 @@ public class KeycloakAdminClient {
     private static final Duration RETRY_BACKOFF = Duration.ofMillis(300);
     private static final long TOKEN_EXPIRY_SKEW_SECONDS = 30;
     private static final long DEFAULT_TOKEN_TTL_SECONDS = 60;
+    private static final String CIRCUIT_NAME = "keycloak";
 
     private final RestClient restClient;
     private final MatchProperties properties;
+    private final CircuitBreaker circuitBreaker;
     private final Clock clock;
 
     private volatile String cachedToken;
     private volatile Instant cachedTokenValidUntil = Instant.EPOCH;
 
     @Autowired
-    public KeycloakAdminClient(RestClient.Builder builder, MatchProperties properties) {
-        this(buildRestClient(builder, properties), properties, Clock.systemUTC());
+    public KeycloakAdminClient(
+            RestClient.Builder builder,
+            MatchProperties properties,
+            CircuitBreakerRegistry circuitBreakerRegistry) {
+        this(buildRestClient(builder, properties), properties, Clock.systemUTC(), circuitBreakerRegistry);
     }
 
-    KeycloakAdminClient(RestClient restClient, MatchProperties properties, Clock clock) {
+    KeycloakAdminClient(
+            RestClient restClient,
+            MatchProperties properties,
+            Clock clock,
+            CircuitBreakerRegistry circuitBreakerRegistry) {
         this.restClient = restClient;
         this.properties = properties;
         this.clock = clock;
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
     }
 
     private static RestClient buildRestClient(RestClient.Builder builder, MatchProperties properties) {
@@ -64,6 +77,16 @@ public class KeycloakAdminClient {
     }
 
     public ContactDto lookupUser(String userId) {
+        try {
+            return circuitBreaker.executeSupplier(() -> lookupWithRetry(userId));
+        } catch (CallNotPermittedException ex) {
+            log.warn("Keycloak circuit is open; skipping the call");
+            throw new UpstreamServiceException(
+                    ErrorCode.CONTACT_PROVIDER_UNAVAILABLE, "Contact provider is unavailable", ex);
+        }
+    }
+
+    private ContactDto lookupWithRetry(String userId) {
         RestClientException lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
