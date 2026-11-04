@@ -23,7 +23,7 @@ rutatur:
     max-candidates: 50
     connect-timeout: 2s
     read-timeout: 5s
-  internal-token: ${RUTATUR_INTERNAL_TOKEN:rutatur-dev-internal-token}
+  internal-token: ${RUTATUR_INTERNAL_TOKEN}
   security:
     jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
 

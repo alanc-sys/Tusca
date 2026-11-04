@@ -21,12 +21,12 @@ rutatur:
     keycloak-admin-url: ${KEYCLOAK_ADMIN_URL:http://localhost:8180}
     keycloak-realm: ${KEYCLOAK_REALM:rutatur-realm}
     keycloak-client-id: ${KEYCLOAK_MATCH_CLIENT_ID:rutatur-match}
-    keycloak-client-secret: ${KEYCLOAK_MATCH_CLIENT_SECRET:rutatur-match-secret}
+    keycloak-client-secret: ${KEYCLOAK_MATCH_CLIENT_SECRET}
     share-ttl: 7d
     connect-timeout: 2s
     read-timeout: 3s
     match-threshold: 0.35
-  internal-token: ${RUTATUR_INTERNAL_TOKEN:rutatur-dev-internal-token}
+  internal-token: ${RUTATUR_INTERNAL_TOKEN}
   security:
     jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
 
