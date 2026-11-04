@@ -8,7 +8,7 @@
 # Cubre: login en Keycloak, roles en el token, gateway (token válido vs. token con clave
 # desconocida), generación anónima, guardado, compartición opt-in, sugerencia >= 0.35,
 # solicitud de coincidencia, consentimiento mutuo, 403 antes del consentimiento, 200 después
-# y una única fila de auditoría en match_schema.user_contact_view.
+# y una única fila de auditoría en match_db.user_contact_view.
 #
 # Requiere: docker compose corriendo, curl, openssl y python3.
 
@@ -321,8 +321,8 @@ REVEALED_USER="$(json_get "${TMP_DIR}/contact-after.json" userId)"
   || fail "contacto revelado ${REVEALED_USER}, se esperaba ${ADMIN1_SUB}"
 
 log "-- Auditoría de acceso al contacto --"
-AUDIT_COUNT="$(docker compose exec -T postgres psql -U rutatur -d rutatur_db -tAc \
-  "SELECT count(*) FROM match_schema.user_contact_view WHERE route_match_id = '${MATCH_ID}'" \
+AUDIT_COUNT="$(docker compose exec -T postgres-match psql -U match_user -d match_db -tAc \
+  "SELECT count(*) FROM user_contact_view WHERE route_match_id = '${MATCH_ID}'" \
   2>/dev/null | tr -d '[:space:]' || true)"
 if [[ "$AUDIT_COUNT" == "1" ]]; then
   pass "una única fila de auditoría para la coincidencia"

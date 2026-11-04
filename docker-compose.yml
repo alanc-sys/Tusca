@@ -1,28 +1,37 @@
-# RutaTur full stack.
+# RutaTur full stack — database per service.
 #
 #   cp .env.example .env    # then edit the secrets
 #   docker compose up -d --wait
 #
-# Only the gateway (8080) and Keycloak (8180) are reachable from outside the host. PostgreSQL and
-# the three functional services publish on 127.0.0.1 for local debugging, so they are never exposed
-# on the LAN. `scripts/verify-network-isolation.sh` proves that property.
+# Each functional service owns a dedicated PostgreSQL container (postgres-poi,
+# postgres-itinerary, postgres-match). There is no shared database: a service cannot reach
+# another service's tables, not even through a different schema, because it is a different
+# server on a different container with its own volume and credentials.
+#
+# Keycloak keeps its own PostgreSQL container as well (postgres-keycloak) so the identity
+# provider never shares storage with the business services.
+#
+# Only the gateway (8080) and Keycloak (8180) are reachable from outside the host. Every
+# database and the three functional services publish on 127.0.0.1 for local debugging, so they
+# are never exposed on the LAN. `scripts/verify-network-isolation.sh` proves that property.
 
 name: rutatur
 
 services:
-  postgres:
+  # ---------------------------------------------------------------- databases
+  postgres-poi:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: rutatur
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: rutatur_db
+      POSTGRES_USER: poi_user
+      POSTGRES_PASSWORD: ${POI_DB_PASSWORD:-poi_pass}
+      POSTGRES_DB: poi_db
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - postgres-poi-data:/var/lib/postgresql/data
+      - ./db/init/poi:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rutatur -d rutatur_db"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U poi_user -d poi_db"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -30,14 +39,74 @@ services:
     networks:
       - rutatur-network
 
+  postgres-itinerary:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: itinerary_user
+      POSTGRES_PASSWORD: ${ITINERARY_DB_PASSWORD:-itinerary_pass}
+      POSTGRES_DB: itinerary_db
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres-itinerary-data:/var/lib/postgresql/data
+      - ./db/init/itinerary:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U itinerary_user -d itinerary_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - rutatur-network
+
+  postgres-match:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: match_user
+      POSTGRES_PASSWORD: ${MATCH_DB_PASSWORD:-match_pass}
+      POSTGRES_DB: match_db
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres-match-data:/var/lib/postgresql/data
+      - ./db/init/match:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U match_user -d match_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - rutatur-network
+
+  postgres-keycloak:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_pass}
+      POSTGRES_DB: keycloak_db
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - postgres-keycloak-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U keycloak_user -d keycloak_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - rutatur-network
+
+  # ---------------------------------------------------------------- identity
   keycloak:
     image: quay.io/keycloak/keycloak:25.0.6
     command: ["start-dev", "--import-realm"]
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: rutatur_kc
-      KC_DB_PASSWORD: rutatur_kc
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_pass}
       KC_HOSTNAME: http://keycloak:8080
       # Keycloak 25 keeps hostname v2 behind a feature flag; it is what makes the full URL above
       # the issuer for tokens requested from either the host or the container network.
@@ -51,7 +120,7 @@ services:
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
     depends_on:
-      postgres:
+      postgres-keycloak:
         condition: service_healthy
     healthcheck:
       test:
@@ -64,6 +133,11 @@ services:
     networks:
       - rutatur-network
 
+  # ---------------------------------------------------------------- services
+  # Datasource URL and username for each service live in its application-docker.yml
+  # (postgres-poi:5432/poi_db, postgres-itinerary:5432/itinerary_db,
+  # postgres-match:5432/match_db). Only the password is injected here, using the same
+  # variable as the matching database container so the two can never drift.
   poi-service:
     build:
       context: .
@@ -71,17 +145,14 @@ services:
         MODULE: poi-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=poi_schema
-      SPRING_DATASOURCE_USERNAME: rutatur_poi
-      # Development-only role password, created by db/init/00-roles.sql.
-      SPRING_DATASOURCE_PASSWORD: rutatur_poi
+      SPRING_DATASOURCE_PASSWORD: ${POI_DB_PASSWORD:-poi_pass}
       RUTATUR_OVERPASS_URL: ${RUTATUR_OVERPASS_URL:-https://overpass-api.de/api/interpreter}
       RUTATUR_INTERNAL_TOKEN: ${RUTATUR_INTERNAL_TOKEN:?RUTATUR_INTERNAL_TOKEN is required}
       JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
     ports:
       - "127.0.0.1:8081:8081"
     depends_on:
-      postgres:
+      postgres-poi:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q '\"status\":\"UP\"'"]
@@ -99,18 +170,17 @@ services:
         MODULE: itinerary-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=itinerary_schema
-      SPRING_DATASOURCE_USERNAME: rutatur_itinerary
-      # Development-only role password, created by db/init/00-roles.sql.
-      SPRING_DATASOURCE_PASSWORD: rutatur_itinerary
+      SPRING_DATASOURCE_PASSWORD: ${ITINERARY_DB_PASSWORD:-itinerary_pass}
       RUTATUR_POI_BASE_URL: http://poi-service:8081
       RUTATUR_OSRM_BASE_URL: ${RUTATUR_OSRM_BASE_URL:-http://router.project-osrm.org}
       RUTATUR_INTERNAL_TOKEN: ${RUTATUR_INTERNAL_TOKEN:?RUTATUR_INTERNAL_TOKEN is required}
       JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
     ports:
       - "127.0.0.1:8082:8082"
+    # Its own database, plus poi-service: generation calls poi-service synchronously, so
+    # starting before that upstream is healthy would only produce retries and noisy logs.
     depends_on:
-      postgres:
+      postgres-itinerary:
         condition: service_healthy
       poi-service:
         condition: service_healthy
@@ -130,10 +200,7 @@ services:
         MODULE: route-match-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=match_schema
-      SPRING_DATASOURCE_USERNAME: rutatur_match
-      # Development-only role password, created by db/init/00-roles.sql.
-      SPRING_DATASOURCE_PASSWORD: rutatur_match
+      SPRING_DATASOURCE_PASSWORD: ${MATCH_DB_PASSWORD:-match_pass}
       RUTATUR_ITINERARY_BASE_URL: http://itinerary-service:8082
       KEYCLOAK_ADMIN_URL: http://keycloak:8080
       KEYCLOAK_REALM: rutatur-realm
@@ -143,8 +210,9 @@ services:
       JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
     ports:
       - "127.0.0.1:8083:8083"
+    # Own database, plus the two upstreams it calls at runtime (tokens and itinerary snapshots).
     depends_on:
-      postgres:
+      postgres-match:
         condition: service_healthy
       keycloak:
         condition: service_healthy
@@ -191,6 +259,7 @@ services:
     networks:
       - rutatur-network
 
+  # ---------------------------------------------------------------- tooling
   pgadmin:
     image: dpage/pgadmin4:8
     profiles: ["tools"]
@@ -199,14 +268,14 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     ports:
       - "127.0.0.1:5050:80"
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - rutatur-network
 
 volumes:
-  postgres-data:
+  postgres-poi-data:
+  postgres-itinerary-data:
+  postgres-match-data:
+  postgres-keycloak-data:
 
 networks:
   rutatur-network:

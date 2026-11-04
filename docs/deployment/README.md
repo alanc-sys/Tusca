@@ -8,8 +8,13 @@
 - 6 GB de RAM recomendados
 - 10 GB de espacio en disco
 
-El stack completo son **7 contenedores**: `postgres`, `keycloak`, `poi-service`, `itinerary-service`,
-`route-match-service`, `api-gateway` y, opcionalmente, `pgadmin` bajo el perfil `tools`.
+El stack completo son **9 contenedores**: cuatro bases PostgreSQL dedicadas (`postgres-poi`,
+`postgres-itinerary`, `postgres-match`, `postgres-keycloak`), `keycloak`, los tres servicios
+funcionales y `api-gateway`; opcionalmente `pgadmin` bajo el perfil `tools`.
+
+Cada servicio tiene **su propia base de datos en su propio contenedor**: no hay instancia
+compartida ni esquemas por servicio. Un servicio no puede leer las tablas de otro porque son
+servidores distintos, con volumen, credenciales y ciclo de vida independientes.
 
 ## Arquitectura de Despliegue
 
@@ -20,7 +25,10 @@ El stack completo son **7 contenedores**: `postgres`, `keycloak`, `poi-service`,
 | `poi-service` | `8081` | Solo `127.0.0.1` (debug local) |
 | `itinerary-service` | `8082` | Solo `127.0.0.1` (debug local) |
 | `route-match-service` | `8083` | Solo `127.0.0.1` (debug local) |
-| `postgres` | `5432` | Solo `127.0.0.1` (debug local) |
+| `postgres-poi` | `5433` → `5432` | Solo `127.0.0.1` (debug local) |
+| `postgres-itinerary` | `5434` → `5432` | Solo `127.0.0.1` (debug local) |
+| `postgres-match` | `5435` → `5432` | Solo `127.0.0.1` (debug local) |
+| `postgres-keycloak` | `5436` → `5432` | Solo `127.0.0.1` (debug local) |
 | `pgadmin` (perfil `tools`) | `5050` | Solo `127.0.0.1` |
 
 Los servicios se comunican por la red bridge `rutatur-network`. Los puertos de los servicios
@@ -45,15 +53,23 @@ cp .env.example .env
 Editá `.env` y ajustá como mínimo:
 
 ```env
-POSTGRES_PASSWORD=...
+POI_DB_PASSWORD=...
+ITINERARY_DB_PASSWORD=...
+MATCH_DB_PASSWORD=...
+KEYCLOAK_DB_PASSWORD=...
 KEYCLOAK_ADMIN_PASSWORD=...
 KEYCLOAK_MATCH_CLIENT_SECRET=...
 RUTATUR_INTERNAL_TOKEN=...
 ```
 
+Cada `*_DB_PASSWORD` se usa en dos lugares: al crear el usuario dentro del contenedor PostgreSQL
+y en el `SPRING_DATASOURCE_PASSWORD` del microservicio que se conecta. Al ser la misma variable,
+las credenciales de ambos lados no pueden desincronizarse.
+
 `.env` está en `.gitignore` y no se versiona. Las variables opcionales
 (`RUTATUR_OVERPASS_URL`, `RUTATUR_OSRM_BASE_URL`, `RUTATUR_CORS_ORIGINS`) tienen valores por
-defecto en `docker-compose.yml`.
+defecto en `docker-compose.yml`; las contraseñas de base de datos también tienen un valor de
+desarrollo, pero conviene fijarlas en `.env`.
 
 > `KEYCLOAK_MATCH_CLIENT_SECRET` debe coincidir con el secreto del cliente `rutatur-match` del
 > realm importado (`keycloak/rutatur-realm.json`). Si lo cambiás en `.env`, actualizá también el
@@ -81,16 +97,19 @@ docker compose up -d --wait
 
 `--wait` espera a que todos los healthchecks pasen. El arranque respeta las dependencias:
 
-1. `postgres` (`pg_isready`)
-2. `keycloak` (health en `:9000`, espera a PostgreSQL)
-3. `poi-service` (espera a PostgreSQL)
-4. `itinerary-service` (espera a PostgreSQL y `poi-service`)
-5. `route-match-service` (espera a PostgreSQL, Keycloak e `itinerary-service`)
+1. `postgres-poi`, `postgres-itinerary`, `postgres-match` y `postgres-keycloak` (`pg_isready`,
+   cada uno con su propio healthcheck)
+2. `keycloak` (health en `:9000`, espera a `postgres-keycloak`)
+3. `poi-service` (espera únicamente a `postgres-poi`)
+4. `itinerary-service` (espera a `postgres-itinerary` y a `poi-service`, su dependencia HTTP)
+5. `route-match-service` (espera a `postgres-match`, Keycloak e `itinerary-service`)
 6. `api-gateway` (espera a Keycloak y a los tres servicios funcionales)
 
-Los esquemas `poi_schema`, `itinerary_schema` y `match_schema` se crean una sola vez desde
-`db/init/*.sql` cuando el volumen `postgres-data` está vacío. Los scripts son idempotentes y el
-volumen conserva los datos entre reinicios: un segundo `docker compose up -d` no duplica nada.
+Cada base arranca con su propio volumen (`postgres-poi-data`, `postgres-itinerary-data`,
+`postgres-match-data`, `postgres-keycloak-data`) y ejecuta una sola vez los scripts de
+`db/init/poi`, `db/init/itinerary` y `db/init/match` cuando su volumen está vacío. Las tablas se
+crean directamente en el esquema `public` de cada base: no hay `CREATE SCHEMA` ni
+`currentSchema`. Los scripts son idempotentes y cada volumen conserva sus datos entre reinicios.
 
 ### Verificar estado
 
@@ -159,16 +178,18 @@ docker compose --profile tools up -d
 
 ### PostgreSQL
 
-- Host: `localhost:5432`
-- Database: `rutatur_db`
-- Superusuario: `rutatur` / valor de `POSTGRES_PASSWORD`
-- Roles por servicio (creados por `db/init/00-roles.sql`):
-  - `rutatur_poi` → `poi_schema`
-  - `rutatur_itinerary` → `itinerary_schema`
-  - `rutatur_match` → `match_schema`
-  - `rutatur_kc` → base `keycloak`
+Una base por servicio, cada una en su propio contenedor y con su propio usuario propietario:
 
-Cada rol tiene `USAGE` sobre un único esquema: un servicio no puede leer las tablas de otro.
+| Contenedor | Host | Database | Usuario | Password |
+|---|---|---|---|---|
+| `postgres-poi` | `localhost:5433` | `poi_db` | `poi_user` | `POI_DB_PASSWORD` |
+| `postgres-itinerary` | `localhost:5434` | `itinerary_db` | `itinerary_user` | `ITINERARY_DB_PASSWORD` |
+| `postgres-match` | `localhost:5435` | `match_db` | `match_user` | `MATCH_DB_PASSWORD` |
+| `postgres-keycloak` | `localhost:5436` | `keycloak_db` | `keycloak_user` | `KEYCLOAK_DB_PASSWORD` |
+
+Cada usuario es propietario de su base y solo puede conectarse a ella: no hay roles compartidos
+ni permisos cruzados. El aislamiento es físico (contenedor y volumen distintos), no un `GRANT`
+sobre un esquema.
 
 ### Keycloak Admin
 
@@ -199,7 +220,10 @@ El script crea una red Docker ajena y comprueba que:
 
 - `poi-service:8081`, `itinerary-service:8082` y `route-match-service:8083` **no** son alcanzables
   desde esa red;
+- `postgres-poi:5432`, `postgres-itinerary:5432`, `postgres-match:5432` y
+  `postgres-keycloak:5432` **tampoco** son alcanzables desde esa red;
 - `api-gateway:8080` **sí** es alcanzable a través del puerto publicado en el host;
+- cada contenedor de base de datos se publica solo en `127.0.0.1`;
 - desde el loopback del host, `localhost:8081/8082/8083/actuator/health` responde;
 - desde la IP LAN del host, esos puertos **no** responden.
 
@@ -212,7 +236,7 @@ bash scripts/smoke.sh
 Cubre el flujo completo: login en Keycloak, roles del token, aceptación/rechazo de tokens en el
 gateway, generación anónima, guardado, compartición opt-in, sugerencia con `matchScore >= 0.35`,
 solicitud de coincidencia, consentimiento mutuo, `403` antes del consentimiento, `200` después y
-una única fila de auditoría en `match_schema.user_contact_view`.
+una única fila de auditoría en `match_db.user_contact_view`.
 
 Requiere `curl`, `openssl`, `python3` y Docker Compose. La generación usa Overpass y OSRM reales,
 así que necesita conectividad a internet.
@@ -223,7 +247,7 @@ así que necesita conectividad a internet.
 # Detener servicios (conserva datos)
 docker compose down
 
-# Detener y borrar el volumen de PostgreSQL (reinicia esquemas y datos)
+# Detener y borrar los volúmenes de las bases (reinicia esquemas y datos)
 docker compose down -v
 
 # Rebuild completo
@@ -235,7 +259,7 @@ docker compose up -d --wait
 docker compose logs -f api-gateway poi-service itinerary-service route-match-service
 
 # Consola de PostgreSQL
-docker compose exec postgres psql -U rutatur -d rutatur_db
+docker compose exec postgres-match psql -U match_user -d match_db
 
 # Estado de healthchecks
 docker compose ps

@@ -1,7 +1,10 @@
--- 01-poi-schema.sql — poi_schema (owner rutatur, runtime role rutatur_poi).
-
-CREATE SCHEMA IF NOT EXISTS poi_schema AUTHORIZATION rutatur;
-SET search_path TO poi_schema;
+-- poi_db — dedicated database for poi-service (container postgres-poi).
+--
+-- There is exactly one service per database, so the tables live in the default `public`
+-- schema: no schema indirection, no cross-service grants. The container user `poi_user`
+-- owns the database and therefore the tables.
+--
+-- Executed once by the postgres entrypoint when the volume is empty.
 
 CREATE TABLE IF NOT EXISTS poi_cache (
   query_key   varchar(64)  NOT NULL,
@@ -20,6 +23,3 @@ CREATE TABLE IF NOT EXISTS poi_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_poi_cache_lookup ON poi_cache (query_key, expires_at);
-
-GRANT USAGE ON SCHEMA poi_schema TO rutatur_poi;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA poi_schema TO rutatur_poi;

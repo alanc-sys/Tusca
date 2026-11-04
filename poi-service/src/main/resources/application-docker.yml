@@ -1,4 +1,9 @@
 spring:
+  datasource:
+    # Dedicated database container; no currentSchema, the database itself is the boundary.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-poi:5432/poi_db}
+    username: ${SPRING_DATASOURCE_USERNAME:poi_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:poi_pass}
   jpa:
     show-sql: false
 

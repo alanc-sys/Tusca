@@ -1,4 +1,9 @@
 spring:
+  datasource:
+    # Dedicated database container; no currentSchema, the database itself is the boundary.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-match:5432/match_db}
+    username: ${SPRING_DATASOURCE_USERNAME:match_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:match_pass}
   jpa:
     show-sql: false
 

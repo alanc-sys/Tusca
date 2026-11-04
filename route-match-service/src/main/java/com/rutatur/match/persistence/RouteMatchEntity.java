@@ -16,7 +16,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Lifecycle row for a request between two shared routes (RN-10). */
 @Entity
-@Table(name = "route_match", schema = "match_schema")
+@Table(name = "route_match")
 public class RouteMatchEntity {
 
     @Id

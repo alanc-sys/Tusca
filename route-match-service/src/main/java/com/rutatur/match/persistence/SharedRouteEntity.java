@@ -13,7 +13,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Opt-in publication of an itinerary. Contact data never lands here (RN-09, RN-12). */
 @Entity
-@Table(name = "shared_route", schema = "match_schema")
+@Table(name = "shared_route")
 public class SharedRouteEntity {
 
     @Id

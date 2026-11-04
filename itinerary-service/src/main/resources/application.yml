@@ -5,16 +5,15 @@ spring:
   application:
     name: itinerary-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rutatur_db?currentSchema=itinerary_schema}
-    username: ${SPRING_DATASOURCE_USERNAME:rutatur_itinerary}
-    password: ${SPRING_DATASOURCE_PASSWORD:rutatur_itinerary}
+    # itinerary-service owns itinerary_db: its own PostgreSQL container in Compose, its own
+    # local instance/port in development. Tables live in the default `public` schema.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5434/itinerary_db}
+    username: ${SPRING_DATASOURCE_USERNAME:itinerary_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:itinerary_pass}
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-    properties:
-      hibernate:
-        default_schema: itinerary_schema
 
 rutatur:
   itinerary:

@@ -12,7 +12,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Unowned generation draft; claimable once within the TTL. */
 @Entity
-@Table(name = "itinerary_draft", schema = "itinerary_schema")
+@Table(name = "itinerary_draft")
 public class ItineraryDraftEntity {
 
     @Id

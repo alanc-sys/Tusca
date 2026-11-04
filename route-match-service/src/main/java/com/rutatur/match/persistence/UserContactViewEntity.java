@@ -12,7 +12,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Audit row appended on every successful contact reveal (RN-12). */
 @Entity
-@Table(name = "user_contact_view", schema = "match_schema")
+@Table(name = "user_contact_view")
 public class UserContactViewEntity {
 
     @Id

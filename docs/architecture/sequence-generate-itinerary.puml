@@ -50,7 +50,7 @@ note over Itinerary: Aplica motor de optimización\n1. Calcular scoring por POI\
 Itinerary -> Itinerary: Generar itinerario optimizado\ncon horarios estimados
 
 alt Usuario autenticado y desea guardar
-  Itinerary -> DB: Persistir itinerario\n(itinerary_schema)
+  Itinerary -> DB: Persistir itinerario\n(itinerary_db)
   activate DB
   DB --> Itinerary: Itinerario guardado
   deactivate DB

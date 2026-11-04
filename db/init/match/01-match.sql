@@ -1,7 +1,11 @@
--- 03-match-schema.sql — match_schema (owner rutatur, runtime role rutatur_match).
-
-CREATE SCHEMA IF NOT EXISTS match_schema AUTHORIZATION rutatur;
-SET search_path TO match_schema;
+-- match_db — dedicated database for route-match-service (container postgres-match).
+--
+-- One service per database, so the tables live in the default `public` schema. The container
+-- user `match_user` owns the database and therefore the tables. The foreign keys below stay
+-- inside this database: shared_route, route_match and user_contact_view all belong to the
+-- matching bounded context.
+--
+-- Executed once by the postgres entrypoint when the volume is empty.
 
 CREATE TABLE IF NOT EXISTS shared_route (
   id              uuid         PRIMARY KEY,
@@ -55,6 +59,3 @@ CREATE TABLE IF NOT EXISTS user_contact_view (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_contact_view_match ON user_contact_view (route_match_id);
-
-GRANT USAGE ON SCHEMA match_schema TO rutatur_match;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA match_schema TO rutatur_match;

@@ -13,7 +13,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Claimed itinerary owned by a JWT subject; keeps its full snapshot. */
 @Entity
-@Table(name = "saved_itinerary", schema = "itinerary_schema")
+@Table(name = "saved_itinerary")
 public class SavedItineraryEntity {
 
     @Id

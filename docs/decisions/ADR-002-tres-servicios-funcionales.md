@@ -4,6 +4,11 @@
 
 Aceptado. **Reemplaza a ADR-001** (`ADR-001-arquitectura-microservicios.md`), que fijaba dos servicios funcionales.
 
+> **Revisada el 2026-11-04**: la decisión de persistencia cambió de esquema por servicio a
+> **Database per Service** (una instancia PostgreSQL por microservicio). Ver la sección
+> "Revisión 2026-11-04" al final; las referencias a `poi_schema`, `itinerary_schema` y
+> `match_schema` en el cuerpo original quedan como registro histórico.
+
 ## Fecha
 
 2026-11-03
@@ -66,3 +71,34 @@ Se adoptan tres decisiones complementarias:
 - Contratos entre servicios, códigos de estado, tiempos de espera y políticas de resiliencia quedan fijados en `openspec/changes/rutatur-platform/design.md`.
 - `ADR-001` no se modifica; esta ADR lo reemplaza y debe citarse en su lugar.
 - El índice `docs/decisions/README.md` lista un `ADR-002` previsto como "Uso de API Gateway" que no existe como archivo; la numeración debe corregirse en la fase de tareas para evitar dos ADR-002 con títulos distintos.
+
+## Revisión 2026-11-04: Database per Service
+
+La decisión 2 y la alternativa 2 quedan **reemplazadas**. Las observaciones docentes señalaron que
+un esquema por servicio dentro de una única instancia PostgreSQL no constituye aislamiento físico:
+los tres servicios comparten el mismo proceso, el mismo volumen y el mismo superusuario.
+
+La arquitectura vigente es **una base de datos por microservicio**, cada una en su propio
+contenedor, con su propio volumen y su propio usuario propietario:
+
+| Contenedor | Base | Usuario | Servicio |
+|---|---|---|---|
+| `postgres-poi` | `poi_db` | `poi_user` | `poi-service` |
+| `postgres-itinerary` | `itinerary_db` | `itinerary_user` | `itinerary-service` |
+| `postgres-match` | `match_db` | `match_user` | `route-match-service` |
+| `postgres-keycloak` | `keycloak_db` | `keycloak_user` | Keycloak |
+
+Consecuencias de la revisión:
+
+- Desaparecen `poi_schema`, `itinerary_schema` y `match_schema`, junto con los roles
+  `rutatur_poi`, `rutatur_itinerary`, `rutatur_match` y `rutatur_kc`. Las tablas se crean en el
+  esquema `public` de cada base y el usuario propietario es el propio servicio.
+- Las URLs JDBC ya no llevan `currentSchema` y Hibernate no configura `default_schema`; el límite
+  pasa a ser la base completa.
+- Compose gana tres contenedores y tres volúmenes, cada uno con su healthcheck `pg_isready`.
+  Keycloak deja de compartir instancia y recibe su propio `postgres-keycloak`.
+- Las credenciales se unifican por variable (`POI_DB_PASSWORD`, `ITINERARY_DB_PASSWORD`,
+  `MATCH_DB_PASSWORD`, `KEYCLOAK_DB_PASSWORD`): el mismo valor crea el usuario y configura el
+  datasource, así que no pueden desincronizarse.
+- La verificación de red comprueba además que las bases no sean alcanzables desde una red Docker
+  ajena y que cada puerto publicado quede en `127.0.0.1`.

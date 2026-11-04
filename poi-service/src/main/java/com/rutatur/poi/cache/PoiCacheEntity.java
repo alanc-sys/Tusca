@@ -13,7 +13,7 @@ import org.hibernate.type.SqlTypes;
 
 /** Cached normalized POI for a query key, with its own expiry instant. */
 @Entity
-@Table(name = "poi_cache", schema = "poi_schema")
+@Table(name = "poi_cache")
 @IdClass(PoiCacheId.class)
 public class PoiCacheEntity {
 

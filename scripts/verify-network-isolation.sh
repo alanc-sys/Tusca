@@ -3,8 +3,11 @@
 # Verifica la propiedad de red de RutaTur:
 #   - desde una red Docker ajena, los servicios funcionales NO son alcanzables por nombre;
 #   - el gateway SÍ es alcanzable desde esa red a través del puerto publicado en el host;
+#   - las bases de datos (postgres-poi, postgres-itinerary, postgres-match y
+#     postgres-keycloak) tampoco son alcanzables desde esa red;
 #   - desde el loopback del host, los puertos 8081/8082/8083 responden;
-#   - desde la IP LAN del host, esos mismos puertos NO responden.
+#   - desde la IP LAN del host, esos mismos puertos NO responden;
+#   - cada contenedor de base de datos se publica solo en 127.0.0.1.
 #
 # Requiere el stack levantado (`docker compose up -d --wait`). Sale con código 0 si todo pasa.
 
@@ -62,11 +65,42 @@ expect_unreachable_from_foreign() {
   if probe "$1"; then fail "$1 NO debería ser alcanzable desde la red ajena"; else pass "$1 inalcanzable desde la red ajena"; fi
 }
 
+# Conexión TCP desde la red ajena: las bases de datos no hablan HTTP.
+tcp_probe() {
+  docker run --rm --network "$FOREIGN_NETWORK" --entrypoint sh "$PROBE_IMAGE" \
+    -c "nc -z -w 3 '$1' '$2' 2>/dev/null || busybox nc -z -w 3 '$1' '$2' 2>/dev/null" \
+    >/dev/null 2>&1
+}
+
+expect_unreachable_tcp_from_foreign() {
+  if tcp_probe "$1" "$2"; then
+    fail "$1:$2 NO debería ser alcanzable desde la red ajena"
+  else
+    pass "$1:$2 inalcanzable desde la red ajena"
+  fi
+}
+
 log "-- Desde una red Docker ajena --"
 expect_unreachable_from_foreign "http://poi-service:8081/actuator/health"
 expect_unreachable_from_foreign "http://itinerary-service:8082/actuator/health"
 expect_unreachable_from_foreign "http://route-match-service:8083/actuator/health"
 expect_reachable_from_foreign "http://api-gateway:8080/actuator/health"
+
+log "-- Bases de datos desde una red Docker ajena --"
+expect_unreachable_tcp_from_foreign postgres-poi 5432
+expect_unreachable_tcp_from_foreign postgres-itinerary 5432
+expect_unreachable_tcp_from_foreign postgres-match 5432
+expect_unreachable_tcp_from_foreign postgres-keycloak 5432
+
+log "-- Publicación de puertos de base de datos --"
+for db in postgres-poi postgres-itinerary postgres-match postgres-keycloak; do
+  binding="$(docker compose port "$db" 5432 2>/dev/null || true)"
+  if [[ "$binding" == 127.0.0.1:* ]]; then
+    pass "$db publicado solo en loopback ($binding)"
+  else
+    fail "$db debería publicarse en 127.0.0.1, binding: ${binding:-<ninguno>}"
+  fi
+done
 
 log "-- Desde el loopback del host --"
 for port in 8081 8082 8083; do

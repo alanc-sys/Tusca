@@ -1,7 +1,9 @@
--- 02-itinerary-schema.sql — itinerary_schema (owner rutatur, runtime role rutatur_itinerary).
-
-CREATE SCHEMA IF NOT EXISTS itinerary_schema AUTHORIZATION rutatur;
-SET search_path TO itinerary_schema;
+-- itinerary_db — dedicated database for itinerary-service (container postgres-itinerary).
+--
+-- One service per database, so the tables live in the default `public` schema. The container
+-- user `itinerary_user` owns the database and therefore the tables.
+--
+-- Executed once by the postgres entrypoint when the volume is empty.
 
 CREATE TABLE IF NOT EXISTS itinerary_draft (
   id            uuid        PRIMARY KEY,
@@ -30,6 +32,3 @@ CREATE TABLE IF NOT EXISTS saved_itinerary (
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_itinerary_owner ON saved_itinerary (user_id, created_at DESC);
-
-GRANT USAGE ON SCHEMA itinerary_schema TO rutatur_itinerary;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA itinerary_schema TO rutatur_itinerary;

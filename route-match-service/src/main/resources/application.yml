@@ -5,16 +5,15 @@ spring:
   application:
     name: route-match-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rutatur_db?currentSchema=match_schema}
-    username: ${SPRING_DATASOURCE_USERNAME:rutatur_match}
-    password: ${SPRING_DATASOURCE_PASSWORD:rutatur_match}
+    # route-match-service owns match_db: its own PostgreSQL container in Compose, its own
+    # local instance/port in development. Tables live in the default `public` schema.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/match_db}
+    username: ${SPRING_DATASOURCE_USERNAME:match_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:match_pass}
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-    properties:
-      hibernate:
-        default_schema: match_schema
 
 rutatur:
   match:

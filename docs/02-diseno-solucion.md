@@ -59,7 +59,7 @@ La solución sigue una arquitectura de microservicios con API Gateway como punto
 | **route-match-service** | Spring Boot 3.x | 8083 | Descubrimiento de coincidencias. Cálculo de similitud (Jaccard + distancia + preferencias). Gestión de solicitudes, estados y revelado condicionado de contacto con consentimiento mutuo. |
 | **rutatur-common** | Maven JAR | N/A | Componente común reutilizable. DTOs, utilidades GeoUtils, excepciones, validadores. Usado por los microservicios. |
 | **Keycloak** | Quarkus/Keycloak | 8180 | Identity Provider. Gestión de usuarios, roles, clientes OIDC. Emisión de tokens JWT. |
-| **PostgreSQL** | PostgreSQL 15+ | 5432 | Base de datos relacional. Esquemas separados: `poi_schema`, `itinerary_schema`, `match_schema`. |
+| **PostgreSQL** | PostgreSQL 15+ | 5432 | Una base dedicada por servicio en contenedores separados: `poi_db`, `itinerary_db`, `match_db` y `keycloak_db`. |
 | **pgAdmin** | pgAdmin 4 | 5050 | Herramienta de administración (opcional para desarrollo) |
 
 ### Colaboración entre Microservicios
@@ -87,7 +87,7 @@ Esta colaboración entre `itinerary-service` y `poi-service` es **real y necesar
 2. API Gateway → route-match-service: Enruta solicitud
 3. route-match-service → itinerary-service: GET /internal/itineraries/{id} (obtiene detalle de ruta para cálculo de similitud)
 4. itinerary-service → route-match-service: Retorna itinerario con POIs, ubicación, preferencias, tiempo
-5. route-match-service: Marca ruta como compartible (opt-in) y persiste en match_schema
+5. route-match-service: Marca ruta como compartible (opt-in) y persiste en match_db
 6. Cliente → API Gateway: GET /api/routes/matches/suggestions
 7. route-match-service: Calcula similitud entre rutas compartibles (Índice de Jaccard + distancia Haversine + preferencias + tiempo)
 8. route-match-service → API Gateway → Cliente: Retorna sugerencias ordenadas por match_score
@@ -281,50 +281,67 @@ factible = tiempoAcumulado <= availableTime
 
 ## 2.9 Persistencia
 
-### Estrategia: Esquema por microservicio en misma instancia PostgreSQL
+### Estrategia: Database per Service (una base PostgreSQL por microservicio)
 
-**Justificación**: 
-- Demuestra separación lógica de datos entre microservicios
-- Más simple que BD separadas para el entorno Docker Compose
-- Permite mostrar independencia conceptual
-- Fácil de administrar
+**Justificación**:
+- Aislamiento físico real: cada servicio tiene su propio contenedor PostgreSQL, su propio
+  volumen y su propio usuario propietario. Un servicio no puede leer las tablas de otro porque
+  son servidores distintos, no esquemas dentro de la misma instancia.
+- Las fronteras del dominio quedan impuestas por la infraestructura y no solo por convención.
+- Permite escalar, respaldar y recrear la base de un servicio sin afectar a los demás.
+- Docker Compose lo soporta de forma directa con un healthcheck y un volumen por contenedor.
 
-### Esquemas
+### Bases de datos
 
-#### poi_schema (poi-service)
+| Contenedor | Base | Usuario propietario | Servicio |
+|---|---|---|---|
+| `postgres-poi` | `poi_db` | `poi_user` | `poi-service` |
+| `postgres-itinerary` | `itinerary_db` | `itinerary_user` | `itinerary-service` |
+| `postgres-match` | `match_db` | `match_user` | `route-match-service` |
+| `postgres-keycloak` | `keycloak_db` | `keycloak_user` | Keycloak |
+
+Las tablas se crean en el esquema `public` de cada base (`db/init/<servicio>/*.sql`). No se usan
+`CREATE SCHEMA` ni `currentSchema`: el límite es la base de datos completa.
+
+#### poi_db (poi-service)
 | Tabla | Propósito | Campos Clave |
 |-------|-----------|--------------|
-| `poi_cache` | Caché de POIs consultados | id, external_id, name, category, lat, lng, visit_time, cached_at, expires_at |
+| `poi_cache` | Caché de POIs consultados | query_key, external_id, name, category, lat, lng, visit_time, rating, cached_at, expires_at |
 
-#### itinerary_schema (itinerary-service)
+#### itinerary_db (itinerary-service)
 | Tabla | Propósito | Campos Clave |
 |-------|-----------|--------------|
-| `itinerary` | Itinerarios guardados | id, user_id, request_data (JSONB), response_data (JSONB), created_at, updated_at |
-| `itinerary_stop` | Paradas del itinerario (opcional) | id, itinerary_id, poi_id, stop_order, arrival_time, departure_time |
+| `itinerary_draft` | Borrador generado, canjeable durante 24 h | id, request_data (JSONB), response_data (JSONB), created_at |
+| `saved_itinerary` | Itinerarios guardados por el usuario | id, itinerary_id, user_id, start_lat, start_lng, available_time, transport_mode, total_time, route_summary, created_at, updated_at |
 
-#### match_schema (route-match-service)
+#### match_db (route-match-service)
 | Tabla | Propósito | Campos Clave |
 |-------|-----------|--------------|
-| `shared_route` | Itinerarios marcados como compartibles (opt-in) | id, itinerary_id, owner_user_id, share_token, is_active, expires_at, created_at |
+| `shared_route` | Itinerarios marcados como compartibles (opt-in) | id, itinerary_id, owner_user_id, is_active, expires_at, created_at |
 | `route_match` | Solicitudes/coincidencias entre usuarios | id, requester_user_id, responder_user_id, shared_route_a_id, shared_route_b_id, match_score, matched_poi_count, matched_pois (JSONB), status (PENDING/ACCEPTED/REJECTED), requested_at, responded_at, accepted_at |
 | `user_contact_view` | Auditoría de revelado de contacto (solo tras ACCEPTED) | id, route_match_id, viewer_user_id, viewed_user_id, revealed_at, contact_info (JSONB mínimo) |
 
 ### Modelo de Datos Detallado
 
-**itinerary (itinerary-service)**
+**saved_itinerary (itinerary_db)**
 ```sql
-CREATE TABLE itinerary (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id VARCHAR(255) NOT NULL,
-  start_lat DECIMAL(10,7),
-  start_lng DECIMAL(10,7),
-  available_time INTEGER,
-  transport_mode VARCHAR(20),
-  request_data JSONB,
-  response_data JSONB NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE saved_itinerary (
+  id              uuid         PRIMARY KEY,
+  itinerary_id    uuid         NOT NULL,
+  user_id         varchar(255) NOT NULL,
+  start_lat       numeric(9,6) NOT NULL,
+  start_lng       numeric(9,6) NOT NULL,
+  available_time  integer      NOT NULL CHECK (available_time BETWEEN 30 AND 480),
+  transport_mode  varchar(16)  NOT NULL CHECK (transport_mode IN ('WALKING','DRIVING')),
+  total_time      integer      NOT NULL CHECK (total_time >= 0),
+  route_summary   text         NOT NULL,
+  request_data    jsonb        NOT NULL,
+  response_data   jsonb        NOT NULL,
+  created_at      timestamptz  NOT NULL DEFAULT now(),
+  updated_at      timestamptz  NOT NULL DEFAULT now(),
+  CONSTRAINT uk_saved_itinerary_itinerary UNIQUE (itinerary_id)
 );
-CREATE INDEX idx_itinerary_user ON itinerary(user_id);
+CREATE INDEX idx_saved_itinerary_owner ON saved_itinerary (user_id, created_at DESC);
 ```
 
 ## 2.10 Componente Común Reutilizable (rutatur-common)

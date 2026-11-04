@@ -75,7 +75,10 @@ rutatur/
 | `itinerary-service` | 8082 | Orquestación, optimización y persistencia de itinerarios |
 | `route-match-service` | 8083 | Descubrimiento de coincidencias, cálculo de similitud, gestión de solicitudes y revelado condicionado de contacto |
 | `keycloak` | 8180 (host) → 8080 | Identity Provider (OIDC/JWT) |
-| `postgres` | 5432 | Base de datos relacional |
+| `postgres-poi` | 5433 (host) → 5432 | BD dedicada de `poi-service` (`poi_db`) |
+| `postgres-itinerary` | 5434 (host) → 5432 | BD dedicada de `itinerary-service` (`itinerary_db`) |
+| `postgres-match` | 5435 (host) → 5432 | BD dedicada de `route-match-service` (`match_db`) |
+| `postgres-keycloak` | 5436 (host) → 5432 | BD dedicada de Keycloak (`keycloak_db`) |
 
 ## APIs Principales
 
