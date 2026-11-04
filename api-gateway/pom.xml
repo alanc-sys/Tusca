@@ -64,6 +64,21 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <bannedDependencies>
+                            <excludes>
+                                <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
+                                <exclude>org.springframework.boot:spring-boot-starter-tomcat</exclude>
+                                <exclude>org.springframework.boot:spring-boot-starter-data-jpa</exclude>
+                            </excludes>
+                        </bannedDependencies>
+                    </rules>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

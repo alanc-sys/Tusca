@@ -39,5 +39,36 @@
             <artifactId>spring-boot-starter-validation</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <bannedDependencies>
+                            <excludes>
+                                <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
+                                <exclude>org.springframework.boot:spring-boot-starter-webflux</exclude>
+                                <exclude>org.springframework.boot:spring-boot-starter-tomcat</exclude>
+                                <exclude>org.springframework.cloud:spring-cloud-starter-gateway</exclude>
+                            </excludes>
+                        </bannedDependencies>
+                    </rules>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

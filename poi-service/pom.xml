@@ -76,6 +76,22 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <bannedDependencies>
+                            <excludes>
+                                <exclude>org.springframework.boot:spring-boot-starter-webflux</exclude>
+                                <exclude>org.springframework.boot:spring-boot-starter-reactor-netty</exclude>
+                                <exclude>org.springframework.cloud:spring-cloud-starter-gateway</exclude>
+                                <exclude>io.projectreactor.netty:reactor-netty-http</exclude>
+                            </excludes>
+                        </bannedDependencies>
+                    </rules>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
