@@ -22,6 +22,7 @@ Client ──► api-gateway :8080 ──► poi-service :8081 ──► Overpas
 | Root `pom.xml` | `<packaging>pom</packaging>`, aggregator + parent, module order `rutatur-common`, `poi-service`, `itinerary-service`, `route-match-service`, `api-gateway` |
 | Platform | `spring-boot-starter-parent` **3.3.5** (present in local `~/.m2`, offline-verified by sdd-init probe) |
 | Cloud | `spring-cloud-dependencies` **2023.0.5** (`Leyton`, supports Boot 3.3.x) |
+| Framework patch | `spring-framework.version` **6.1.15**: Gateway 4.1.6 calls `HttpHeaders.headerSet()`, introduced in 6.1.15, while Boot 3.3.5 manages 6.1.14 |
 | Resilience | `io.github.resilience4j:resilience4j-spring-boot3` **2.2.0** |
 | Docs | `org.springdoc:springdoc-openapi-starter-webmvc-ui` / `-webflux-ui` **2.6.0** |
 | Java | `java.version=21`, `maven.compiler.release=21`, `project.build.sourceEncoding=UTF-8` |

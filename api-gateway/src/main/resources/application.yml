@@ -1,0 +1,79 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 10s
+      routes:
+        - id: pois
+          uri: ${POI_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/pois/**
+        - id: itinerary-generate
+          uri: ${ITINERARY_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/api/itinerary/**
+        - id: itineraries
+          uri: ${ITINERARY_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/api/itineraries/**
+        - id: routes
+          uri: ${ROUTE_MATCH_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/api/routes/**
+        - id: admin
+          uri: ${ITINERARY_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/api/admin/**
+        - id: docs-pois
+          uri: ${POI_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/v3/api-docs/pois
+          filters:
+            - RewritePath=/v3/api-docs/pois, /v3/api-docs
+        - id: docs-itineraries
+          uri: ${ITINERARY_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/itineraries
+          filters:
+            - RewritePath=/v3/api-docs/itineraries, /v3/api-docs
+        - id: docs-routes
+          uri: ${ROUTE_MATCH_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/v3/api-docs/routes
+          filters:
+            - RewritePath=/v3/api-docs/routes, /v3/api-docs
+
+rutatur:
+  cors:
+    origins: ${RUTATUR_CORS_ORIGINS:http://localhost:3000,http://localhost:8080}
+  security:
+    jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: pois
+        url: /v3/api-docs/pois
+      - name: itineraries
+        url: /v3/api-docs/itineraries
+      - name: routes
+        url: /v3/api-docs/routes
+  api-docs:
+    path: /v3/api-docs
