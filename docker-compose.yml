@@ -1,0 +1,213 @@
+# RutaTur full stack.
+#
+#   cp .env.example .env    # then edit the secrets
+#   docker compose up -d --wait
+#
+# Only the gateway (8080) and Keycloak (8180) are reachable from outside the host. PostgreSQL and
+# the three functional services publish on 127.0.0.1 for local debugging, so they are never exposed
+# on the LAN. `scripts/verify-network-isolation.sh` proves that property.
+
+name: rutatur
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: rutatur
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: rutatur_db
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rutatur -d rutatur_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - rutatur-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: rutatur_kc
+      KC_DB_PASSWORD: rutatur_kc
+      KC_HOSTNAME: http://keycloak:8080
+      # Keycloak 25 keeps hostname v2 behind a feature flag; it is what makes the full URL above
+      # the issuer for tokens requested from either the host or the container network.
+      KC_FEATURES: hostname:v2
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "{ printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3; grep -q '200' <&3; } 3<>/dev/tcp/localhost/9000"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - rutatur-network
+
+  poi-service:
+    build:
+      context: .
+      args:
+        MODULE: poi-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=poi_schema
+      SPRING_DATASOURCE_USERNAME: rutatur_poi
+      # Development-only role password, created by db/init/00-roles.sql.
+      SPRING_DATASOURCE_PASSWORD: rutatur_poi
+      RUTATUR_OVERPASS_URL: ${RUTATUR_OVERPASS_URL:-https://overpass-api.de/api/interpreter}
+      RUTATUR_INTERNAL_TOKEN: ${RUTATUR_INTERNAL_TOKEN:?RUTATUR_INTERNAL_TOKEN is required}
+      JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - rutatur-network
+
+  itinerary-service:
+    build:
+      context: .
+      args:
+        MODULE: itinerary-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=itinerary_schema
+      SPRING_DATASOURCE_USERNAME: rutatur_itinerary
+      # Development-only role password, created by db/init/00-roles.sql.
+      SPRING_DATASOURCE_PASSWORD: rutatur_itinerary
+      RUTATUR_POI_BASE_URL: http://poi-service:8081
+      RUTATUR_OSRM_BASE_URL: ${RUTATUR_OSRM_BASE_URL:-http://router.project-osrm.org}
+      RUTATUR_INTERNAL_TOKEN: ${RUTATUR_INTERNAL_TOKEN:?RUTATUR_INTERNAL_TOKEN is required}
+      JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
+    ports:
+      - "127.0.0.1:8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      poi-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - rutatur-network
+
+  route-match-service:
+    build:
+      context: .
+      args:
+        MODULE: route-match-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=match_schema
+      SPRING_DATASOURCE_USERNAME: rutatur_match
+      # Development-only role password, created by db/init/00-roles.sql.
+      SPRING_DATASOURCE_PASSWORD: rutatur_match
+      RUTATUR_ITINERARY_BASE_URL: http://itinerary-service:8082
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_REALM: rutatur-realm
+      KEYCLOAK_MATCH_CLIENT_ID: rutatur-match
+      KEYCLOAK_MATCH_CLIENT_SECRET: ${KEYCLOAK_MATCH_CLIENT_SECRET:?KEYCLOAK_MATCH_CLIENT_SECRET is required}
+      RUTATUR_INTERNAL_TOKEN: ${RUTATUR_INTERNAL_TOKEN:?RUTATUR_INTERNAL_TOKEN is required}
+      JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      itinerary-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - rutatur-network
+
+  api-gateway:
+    build:
+      context: .
+      args:
+        MODULE: api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POI_SERVICE_URI: http://poi-service:8081
+      ITINERARY_SERVICE_URI: http://itinerary-service:8082
+      ROUTE_MATCH_SERVICE_URI: http://route-match-service:8083
+      JWT_ISSUER_URI: http://keycloak:8080/realms/rutatur-realm
+      RUTATUR_CORS_ORIGINS: ${RUTATUR_CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      poi-service:
+        condition: service_healthy
+      itinerary-service:
+        condition: service_healthy
+      route-match-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - rutatur-network
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@rutatur.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    ports:
+      - "127.0.0.1:5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rutatur-network
+
+volumes:
+  postgres-data:
+
+networks:
+  rutatur-network:
+    driver: bridge

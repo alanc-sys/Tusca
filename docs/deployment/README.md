@@ -2,262 +2,288 @@
 
 ## Requisitos
 
-- Docker 20.10+
-- Docker Compose 2.0+
-- 4GB RAM mínimo (recomendado 6GB)
-- 10GB de espacio en disco
+- Docker 24+ con Docker Compose v2 (`docker compose`, no `docker-compose`)
+- JDK 21 (Temurin recomendado) para compilar y correr los tests
+- Maven 3.9+
+- 6 GB de RAM recomendados
+- 10 GB de espacio en disco
+
+El stack completo son **7 contenedores**: `postgres`, `keycloak`, `poi-service`, `itinerary-service`,
+`route-match-service`, `api-gateway` y, opcionalmente, `pgadmin` bajo el perfil `tools`.
 
 ## Arquitectura de Despliegue
 
-El despliegue se realiza con **Docker Compose** levantando todos los componentes necesarios:
+| Componente | Puerto host | Acceso |
+|---|---|---|
+| `api-gateway` | `8080` | Todas las interfaces (único ingreso público) |
+| `keycloak` | `8180` → `8080` | Todas las interfaces |
+| `poi-service` | `8081` | Solo `127.0.0.1` (debug local) |
+| `itinerary-service` | `8082` | Solo `127.0.0.1` (debug local) |
+| `route-match-service` | `8083` | Solo `127.0.0.1` (debug local) |
+| `postgres` | `5432` | Solo `127.0.0.1` (debug local) |
+| `pgadmin` (perfil `tools`) | `5050` | Solo `127.0.0.1` |
 
-- PostgreSQL
-- Keycloak
-- API Gateway
-- poi-service
-- itinerary-service
+Los servicios se comunican por la red bridge `rutatur-network`. Los puertos de los servicios
+funcionales se publican en loopback únicamente para desarrollo; ningún cliente de la red puede
+usarlos como ingreso. `scripts/verify-network-isolation.sh` verifica esa propiedad.
 
 ## Configuración Inicial
 
-### 1. Clonar Repositorio
+### 1. Clonar el repositorio
 
 ```bash
 git clone <repository-url>
 cd rutatur
 ```
 
-### 2. Configurar Variables de Entorno
+### 2. Crear el archivo `.env`
 
-Crear archivo `.env` en la raíz del proyecto:
+```bash
+cp .env.example .env
+```
+
+Editá `.env` y ajustá como mínimo:
 
 ```env
-# PostgreSQL
-POSTGRES_USER=rutatur
-POSTGRES_PASSWORD=rutatur_pass
-POSTGRES_DB=rutatur_db
-
-# Keycloak
-KEYCLOAK_ADMIN=admin
-KEYCLOAK_ADMIN_PASSWORD=admin
-KEYCLOAK_REALM=rutatur-realm
-
-# Servicios Externos
-OVERPASS_URL=https://overpass-api.de/api/interpreter
-OSRM_URL=http://router.project-osrm.org
-
-# JWT
-JWT_ISSUER_URI=http://keycloak:8080/realms/rutatur-realm
+POSTGRES_PASSWORD=...
+KEYCLOAK_ADMIN_PASSWORD=...
+KEYCLOAK_MATCH_CLIENT_SECRET=...
+RUTATUR_INTERNAL_TOKEN=...
 ```
 
-### 3. Compilar Componentes
+`.env` está en `.gitignore` y no se versiona. Las variables opcionales
+(`RUTATUR_OVERPASS_URL`, `RUTATUR_OSRM_BASE_URL`, `RUTATUR_CORS_ORIGINS`) tienen valores por
+defecto en `docker-compose.yml`.
 
-Primero compilar e instalar el componente común:
+> `KEYCLOAK_MATCH_CLIENT_SECRET` debe coincidir con el secreto del cliente `rutatur-match` del
+> realm importado (`keycloak/rutatur-realm.json`). Si lo cambiás en `.env`, actualizá también el
+> realm o volvé a exportarlo.
+
+### 3. Compilar y verificar (opcional, para desarrollo local)
 
 ```bash
-cd rutatur-common
-mvn clean install
-cd ..
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"   # macOS
+# export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk        # Linux
+
+mvn -B verify
 ```
 
-Compilar todos los microservicios:
-
-```bash
-mvn clean package -DskipTests
-```
+`mvn -B verify` compila y testea todo el reactor, incluido `rutatur-common`. **No hace falta**
+ejecutar `mvn install` a mano sobre el componente común: el reactor resuelve el orden.
 
 ## Levantar Servicios
 
-### Despliegue Completo
+### Despliegue completo
 
 ```bash
-docker-compose up -d
+docker compose up -d --wait
 ```
 
-Este comando levantará:
-1. PostgreSQL (espera a estar healthy)
-2. Keycloak (espera a PostgreSQL)
-3. poi-service (espera a PostgreSQL)
-4. itinerary-service (espera a PostgreSQL, poi-service)
-5. API Gateway (espera a todos los microservicios)
+`--wait` espera a que todos los healthchecks pasen. El arranque respeta las dependencias:
 
-### Verificar Estado
+1. `postgres` (`pg_isready`)
+2. `keycloak` (health en `:9000`, espera a PostgreSQL)
+3. `poi-service` (espera a PostgreSQL)
+4. `itinerary-service` (espera a PostgreSQL y `poi-service`)
+5. `route-match-service` (espera a PostgreSQL, Keycloak e `itinerary-service`)
+6. `api-gateway` (espera a Keycloak y a los tres servicios funcionales)
+
+Los esquemas `poi_schema`, `itinerary_schema` y `match_schema` se crean una sola vez desde
+`db/init/*.sql` cuando el volumen `postgres-data` está vacío. Los scripts son idempotentes y el
+volumen conserva los datos entre reinicios: un segundo `docker compose up -d` no duplica nada.
+
+### Verificar estado
 
 ```bash
-# Ver contenedores
-docker-compose ps
-
-# Ver logs
-docker-compose logs -f
-
-# Ver logs de un servicio específico
-docker-compose logs -f api-gateway
+docker compose ps
+docker compose logs -f
+docker compose logs -f api-gateway
 ```
 
-### Verificar Health Checks
+### Health checks
 
 ```bash
-# API Gateway
-curl http://localhost:8080/actuator/health
-
-# poi-service
-curl http://localhost:8081/actuator/health
-
-# itinerary-service
-curl http://localhost:8082/actuator/health
+curl http://localhost:8080/actuator/health   # api-gateway
+curl http://localhost:8081/actuator/health   # poi-service
+curl http://localhost:8082/actuator/health   # itinerary-service
+curl http://localhost:8083/actuator/health   # route-match-service
 ```
 
-## Configuración de Keycloak
+## Keycloak
 
-### 1. Acceder a Keycloak Admin
-
-URL: http://localhost:8180/admin
-Usuario: admin
-Contraseña: admin
-
-### 2. Importar Realm
-
-El proyecto incluye `keycloak/rutatur-realm.json` con la configuración predefinida:
-
-1. Ir a `Create Realm` → `Import`
-2. Seleccionar `keycloak/rutatur-realm.json`
-3. Importar
-
-El realm incluye:
-- Clientes: `rutatur-api`, `rutatur-gateway`
-- Roles: `ROLE_USER`, `ROLE_ADMIN`
-- Usuarios de prueba: `user1` / `password`, `admin1` / `password`
-
-### 3. Verificar Configuración
+El realm se importa automáticamente al arrancar (`start-dev --import-realm`, montando
+`./keycloak` en `/opt/keycloak/data/import`). No hace falta importarlo a mano.
 
 - Realm: `rutatur-realm`
-- Clients configurados con URLs correctas
-- Roles creados
-- Usuarios de prueba disponibles
+- Access token lifespan: 15 minutos
+- Emisor (`iss`): `http://keycloak:8080/realms/rutatur-realm`, fijado con `KC_HOSTNAME` para que
+  los tokens pedidos desde `localhost:8180` validen dentro de la red
+- Clientes:
+  - `rutatur-api`: público, direct access grants (curl/Swagger)
+  - `rutatur-gateway`: confidencial, sin service account (solo valida)
+  - `rutatur-match`: confidencial, service account con `realm-management:view-users`
+- Roles: `ROLE_USER`, `ROLE_ADMIN`
+- Usuarios: `user1` / `password` (USER), `admin1` / `password` (USER + ADMIN)
+
+### Obtener un token
+
+```bash
+curl -s -X POST http://localhost:8180/realms/rutatur-realm/protocol/openid-connect/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=password' \
+  -d 'client_id=rutatur-api' \
+  -d 'username=user1' \
+  -d 'password=password'
+```
 
 ## Acceso a los Servicios
 
 | Servicio | URL | Descripción |
-|----------|-----|-------------|
+|---|---|---|
 | **API Gateway** | http://localhost:8080 | Punto de entrada principal |
-| **Swagger UI (Gateway)** | http://localhost:8080/swagger-ui.html | Documentación unificada |
+| **Swagger UI** | http://localhost:8080/swagger-ui.html | Documentación unificada |
 | **Keycloak** | http://localhost:8180 | Identity Provider |
-| **Keycloak Admin** | http://localhost:8180/admin | Administración Keycloak |
-| **pgAdmin** | http://localhost:5050 | Administración PostgreSQL (opcional) |
-| **poi-service Swagger** | http://localhost:8081/swagger-ui.html | Swagger directo (dev) |
-| **itinerary-service Swagger** | http://localhost:8082/swagger-ui.html | Swagger directo (dev) |
+| **Keycloak Admin** | http://localhost:8180/admin | Administración de Keycloak |
+| **pgAdmin** | http://localhost:5050 | Administración PostgreSQL (perfil `tools`) |
+| **poi-service Swagger** | http://localhost:8081/swagger-ui.html | Swagger directo (solo loopback) |
+| **itinerary-service Swagger** | http://localhost:8082/swagger-ui.html | Swagger directo (solo loopback) |
+| **route-match-service Swagger** | http://localhost:8083/swagger-ui.html | Swagger directo (solo loopback) |
+
+pgAdmin no arranca por defecto:
+
+```bash
+docker compose --profile tools up -d
+```
 
 ## Credenciales por Defecto
 
 ### PostgreSQL
-- Host: localhost:5432
-- Database: rutatur_db
-- Usuario: rutatur
-- Password: rutatur_pass
+
+- Host: `localhost:5432`
+- Database: `rutatur_db`
+- Superusuario: `rutatur` / valor de `POSTGRES_PASSWORD`
+- Roles por servicio (creados por `db/init/00-roles.sql`):
+  - `rutatur_poi` → `poi_schema`
+  - `rutatur_itinerary` → `itinerary_schema`
+  - `rutatur_match` → `match_schema`
+  - `rutatur_kc` → base `keycloak`
+
+Cada rol tiene `USAGE` sobre un único esquema: un servicio no puede leer las tablas de otro.
 
 ### Keycloak Admin
-- Usuario: admin
-- Password: admin
+
+- Usuario: valor de `KEYCLOAK_ADMIN` (por defecto `admin`)
+- Password: valor de `KEYCLOAK_ADMIN_PASSWORD`
 
 ### pgAdmin
-- Email: admin@rutatur.com
-- Password: admin
 
-### Usuarios de Prueba (Keycloak)
+- Email: `admin@rutatur.com`
+- Password: `admin`
+
+### Usuarios de prueba (Keycloak)
+
 | Usuario | Password | Roles |
-|---------|----------|-------|
-| user1 | password | ROLE_USER |
-| admin1 | password | ROLE_USER, ROLE_ADMIN |
+|---|---|---|
+| `user1` | `password` | `ROLE_USER` |
+| `admin1` | `password` | `ROLE_USER`, `ROLE_ADMIN` |
+
+## Verificación de Red
+
+Con el stack levantado:
+
+```bash
+bash scripts/verify-network-isolation.sh
+```
+
+El script crea una red Docker ajena y comprueba que:
+
+- `poi-service:8081`, `itinerary-service:8082` y `route-match-service:8083` **no** son alcanzables
+  desde esa red;
+- `api-gateway:8080` **sí** es alcanzable a través del puerto publicado en el host;
+- desde el loopback del host, `localhost:8081/8082/8083/actuator/health` responde;
+- desde la IP LAN del host, esos puertos **no** responden.
+
+## Smoke Test End-to-End
+
+```bash
+bash scripts/smoke.sh
+```
+
+Cubre el flujo completo: login en Keycloak, roles del token, aceptación/rechazo de tokens en el
+gateway, generación anónima, guardado, compartición opt-in, sugerencia con `matchScore >= 0.35`,
+solicitud de coincidencia, consentimiento mutuo, `403` antes del consentimiento, `200` después y
+una única fila de auditoría en `match_schema.user_contact_view`.
+
+Requiere `curl`, `openssl`, `python3` y Docker Compose. La generación usa Overpass y OSRM reales,
+así que necesita conectividad a internet.
 
 ## Comandos Útiles
 
-### Detener Servicios
-
 ```bash
-docker-compose down
-```
+# Detener servicios (conserva datos)
+docker compose down
 
-### Detener y Eliminar Volúmenes
+# Detener y borrar el volumen de PostgreSQL (reinicia esquemas y datos)
+docker compose down -v
 
-```bash
-docker-compose down -v
-```
+# Rebuild completo
+docker compose down
+docker compose build --no-cache
+docker compose up -d --wait
 
-### Rebuild Completo
+# Logs en tiempo real
+docker compose logs -f api-gateway poi-service itinerary-service route-match-service
 
-```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
+# Consola de PostgreSQL
+docker compose exec postgres psql -U rutatur -d rutatur_db
 
-### Ver Logs en Tiempo Real
-
-```bash
-docker-compose logs -f api-gateway poi-service itinerary-service
-```
-
-### Ejecutar Comando en Contenedor
-
-```bash
-docker-compose exec postgres psql -U rutatur -d rutatur_db
-```
-
-### Escalar Servicios (Opcional)
-
-```bash
-docker-compose up -d --scale poi-service=2
+# Estado de healthchecks
+docker compose ps
 ```
 
 ## Troubleshooting
 
 ### Keycloak no inicia
 
-- Verificar que PostgreSQL esté healthy
-- Revisar logs: `docker-compose logs keycloak`
-- Puede tardar 1-2 minutos en iniciar
+- Verificá que PostgreSQL esté `healthy`: `docker compose ps`.
+- Revisá `docker compose logs keycloak`.
+- El primer arranque puede tardar 1–2 minutos (crea el esquema de Keycloak).
 
-### Microservicios no se conectan a Keycloak
+### Los servicios no validan tokens
 
-- Verificar que Keycloak esté completamente iniciado
-- Comprobar `JWT_ISSUER_URI` en configuración
-- Revisar que el realm esté importado
+- Confirmá que Keycloak esté `healthy` y que el realm `rutatur-realm` exista.
+- `JWT_ISSUER_URI` debe ser `http://keycloak:8080/realms/rutatur-realm` en los cuatro servicios JVM.
+- Si cambiaste `KC_HOSTNAME`, los tokens emitidos tendrán otro `iss` y serán rechazados.
 
-### Error al conectar con APIs Externas
+### Error al conectar con APIs externas
 
-- Overpass/OSRM son públicos, pueden tener rate limits
-- Verificar conectividad: `curl https://overpass-api.de/api/interpreter`
-- En caso de problemas, usar servicios alternativos
+- Overpass/OSRM son públicos y pueden tener rate limits.
+- Verificá conectividad: `curl https://overpass-api.de/api/interpreter`.
+- Ajustá `RUTATUR_OVERPASS_URL` y `RUTATUR_OSRM_BASE_URL` en `.env`.
 
 ### Puerto ya en uso
 
 ```bash
-# Encontrar proceso usando puerto 8080
 lsof -i :8080
-
-# Matar proceso
 kill -9 <PID>
 ```
 
 ### Limpiar todo y empezar de cero
 
 ```bash
-docker-compose down -v
+docker compose down -v
 docker system prune -a
-# Volver a levantar
-docker-compose up -d
+docker compose up -d --wait
 ```
 
 ## Consideraciones de Producción
 
-Para un despliegue real se deberían considerar:
+Esta configuración es adecuada para entorno académico/desarrollo. Para un despliegue real:
 
-- Usar HTTPS/TLS
-- Configurar secrets con Docker Secrets o Vault
-- Implementar límites de rate limiting
-- Usar Redis para caché
-- Configurar monitoring (Prometheus/Grafana)
-- Implementar logging centralizado (ELK)
-- Usar instancias propias de OSRM
-- Configurar backups de PostgreSQL
-
-**Nota**: Esta configuración es adecuada para entorno académico/desarrollo.
+- Usar HTTPS/TLS y `KC_HOSTNAME` con el dominio público.
+- Gestionar secretos con Docker Secrets o Vault (no `.env` en disco).
+- Rotar los secretos de clientes de Keycloak y los roles de PostgreSQL.
+- Añadir rate limiting y límites de recursos.
+- Usar Redis para caché y monitoreo con Prometheus/Grafana.
+- Implementar logging centralizado (ELK) y backups de PostgreSQL.
+- Usar instancias propias de OSRM y Overpass.
