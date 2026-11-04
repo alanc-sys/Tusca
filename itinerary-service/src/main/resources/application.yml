@@ -1,0 +1,43 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: itinerary-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rutatur_db?currentSchema=itinerary_schema}
+    username: ${SPRING_DATASOURCE_USERNAME:rutatur_itinerary}
+    password: ${SPRING_DATASOURCE_PASSWORD:rutatur_itinerary}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: itinerary_schema
+
+rutatur:
+  itinerary:
+    poi-base-url: ${RUTATUR_POI_BASE_URL:http://localhost:8081}
+    osrm-base-url: ${RUTATUR_OSRM_BASE_URL:http://localhost:5000}
+    start-clock: 09:00
+    max-candidates: 50
+    connect-timeout: 2s
+    read-timeout: 5s
+  internal-token: ${RUTATUR_INTERNAL_TOKEN:rutatur-dev-internal-token}
+  security:
+    jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
