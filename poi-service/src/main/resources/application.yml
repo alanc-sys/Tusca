@@ -1,0 +1,42 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: poi-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rutatur_db?currentSchema=poi_schema}
+    username: ${SPRING_DATASOURCE_USERNAME:rutatur_poi}
+    password: ${SPRING_DATASOURCE_PASSWORD:rutatur_poi}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: poi_schema
+
+rutatur:
+  poi:
+    overpass-url: ${RUTATUR_OVERPASS_URL:https://overpass-api.de/api/interpreter}
+    cache-ttl: 15m
+    cache-retention: 7d
+    connect-timeout: 2s
+    read-timeout: 5s
+  internal-token: ${RUTATUR_INTERNAL_TOKEN:rutatur-dev-internal-token}
+  security:
+    jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
