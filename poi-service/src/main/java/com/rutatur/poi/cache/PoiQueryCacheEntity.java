@@ -11,7 +11,7 @@ import java.time.Instant;
  * Without it an area with no POIs would call Overpass on every search.
  */
 @Entity
-@Table(name = "poi_query_cache", schema = "poi_schema")
+@Table(name = "poi_query_cache")
 public class PoiQueryCacheEntity {
 
     @Id
