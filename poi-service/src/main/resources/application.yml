@@ -1,0 +1,61 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: poi-service
+  datasource:
+    # poi-service owns poi_db: its own PostgreSQL container in Compose, its own local
+    # instance/port in development. Tables live in the default `public` schema.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/poi_db}
+    username: ${SPRING_DATASOURCE_USERNAME:poi_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:poi_pass}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+rutatur:
+  poi:
+    overpass-url: ${RUTATUR_OVERPASS_URL:https://overpass-api.de/api/interpreter}
+    cache-ttl: 15m
+    cache-retention: 7d
+    connect-timeout: 2s
+    read-timeout: 5s
+  internal-token: ${RUTATUR_INTERNAL_TOKEN}
+  security:
+    jwt-issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/rutatur-realm}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        failure-rate-threshold: 50
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: false
+        ignore-exceptions:
+          - com.rutatur.common.exception.ResourceNotFoundException
+          - com.rutatur.common.exception.BusinessException
+          - com.rutatur.common.exception.ForbiddenActionException
+    instances:
+      overpass:
+        base-config: default
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs

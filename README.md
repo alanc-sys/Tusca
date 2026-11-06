@@ -26,7 +26,7 @@ Desarrollar una solución backend completa que demuestre los conceptos de micros
 
 | Componente | Tecnología |
 |------------|------------|
-| Lenguaje | Java 17+ |
+| Lenguaje | Java 21 |
 | Framework | Spring Boot 3.x |
 | Microservicios | Spring Cloud Gateway |
 | Seguridad | Spring Security + Keycloak (OIDC/JWT) |
@@ -74,8 +74,11 @@ rutatur/
 | `poi-service` | 8081 | Búsqueda, enriquecimiento y caché de Puntos de Interés |
 | `itinerary-service` | 8082 | Orquestación, optimización y persistencia de itinerarios |
 | `route-match-service` | 8083 | Descubrimiento de coincidencias, cálculo de similitud, gestión de solicitudes y revelado condicionado de contacto |
-| `keycloak` | 8080 (auth) | Identity Provider (OIDC/JWT) |
-| `postgres` | 5432 | Base de datos relacional |
+| `keycloak` | 8180 (host) → 8080 | Identity Provider (OIDC/JWT) |
+| `postgres-poi` | 5433 (host) → 5432 | BD dedicada de `poi-service` (`poi_db`) |
+| `postgres-itinerary` | 5434 (host) → 5432 | BD dedicada de `itinerary-service` (`itinerary_db`) |
+| `postgres-match` | 5435 (host) → 5432 | BD dedicada de `route-match-service` (`match_db`) |
+| `postgres-keycloak` | 5436 (host) → 5432 | BD dedicada de Keycloak (`keycloak_db`) |
 
 ## APIs Principales
 
@@ -114,9 +117,9 @@ Ver [documentación completa de APIs](./docs/api/README.md).
 
 ### Prerequisitos
 
-- Docker y Docker Compose
-- Java 17+ (para desarrollo local)
-- Maven 3.8+ (para desarrollo local)
+- Docker 24+ con Docker Compose v2 (`docker compose`)
+- JDK 21 (Temurin recomendado)
+- Maven 3.9+
 
 ### Despliegue con Docker Compose
 
@@ -125,14 +128,27 @@ Ver [documentación completa de APIs](./docs/api/README.md).
 git clone <repo-url>
 cd rutatur
 
-# Levantar todos los servicios
-docker-compose up -d
+# Crear el archivo de variables de entorno y editarlo
+cp .env.example .env
+
+# Levantar todos los servicios y esperar los healthchecks
+docker compose up -d --wait
 
 # Verificar estado
-docker-compose ps
+docker compose ps
 
 # Ver logs
-docker-compose logs -f
+docker compose logs -f
+```
+
+### Verificación del despliegue
+
+```bash
+# Aislamiento de red: los servicios solo son accesibles a través del gateway
+bash scripts/verify-network-isolation.sh
+
+# Flujo completo: login, generación, guardado, coincidencias y consentimiento mutuo
+bash scripts/smoke.sh
 ```
 
 ### URLs de Acceso
@@ -141,29 +157,28 @@ docker-compose logs -f
 |----------|-----|--------------|
 | API Gateway | http://localhost:8080 | - |
 | Swagger UI (Gateway) | http://localhost:8080/swagger-ui.html | - |
-| Keycloak Admin | http://localhost:8180/admin | admin/admin |
-| pgAdmin (opcional) | http://localhost:5050 | admin@rutatur.com/admin |
+| Keycloak Admin | http://localhost:8180/admin | `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD` |
+| pgAdmin (perfil `tools`) | http://localhost:5050 | admin@rutatur.com/admin |
 
 ## Desarrollo
 
 ### Build local
 
 ```bash
-# Compilar componente común e instalarlo en .m2
-cd rutatur-common && mvn clean install
+# JDK 21: el reactor lo exige vía enforcer
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"   # macOS
+# export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk        # Linux
 
-# Compilar todos los microservicios
-mvn clean package
+# Compila y testea todo el reactor (incluye rutatur-common).
+# No hace falta `mvn install` manual sobre el componente común.
+mvn -B verify
 ```
 
 ### Testing
 
 ```bash
-# Ejecutar tests unitarios
-mvn test
-
-# Ejecutar tests con cobertura
-mvn test jacoco:report
+# Ejecutar tests unitarios de todos los módulos
+mvn -B test
 ```
 
 ## Documentación Adicional

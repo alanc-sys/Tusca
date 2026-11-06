@@ -1,0 +1,171 @@
+package com.rutatur.itinerary.client;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.rutatur.common.dto.GeoPointDto;
+import com.rutatur.common.dto.PoiDto;
+import com.rutatur.common.enums.TransportMode;
+import com.rutatur.common.error.ErrorCode;
+import com.rutatur.common.exception.UpstreamServiceException;
+import com.rutatur.itinerary.config.ItineraryProperties;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
+
+/**
+ * OSRM {@code /table} integration. Seconds are rounded half-up to minutes and meters to integers;
+ * a {@code null} cell becomes {@link RoutingMatrix#UNREACHABLE}. Euclidean estimates are never used.
+ * A 200 that does not describe the requested square matrix is a contract failure, not an empty matrix.
+ */
+@Component
+public class OsrmTableClient {
+
+    private static final Logger log = LoggerFactory.getLogger(OsrmTableClient.class);
+    private static final String CIRCUIT_NAME = "osrm";
+
+    private final RestClient restClient;
+    private final String baseUrl;
+    private final CircuitBreaker circuitBreaker;
+    private final Duration retryBackoff = Duration.ofMillis(300);
+
+    public OsrmTableClient(
+            RestClient.Builder builder,
+            ItineraryProperties properties,
+            CircuitBreakerRegistry circuitBreakerRegistry) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.connectTimeout());
+        requestFactory.setReadTimeout(properties.readTimeout());
+        this.restClient = builder.requestFactory(requestFactory).build();
+        this.baseUrl = trimSlash(properties.osrmBaseUrl());
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME);
+    }
+
+    public RoutingMatrix table(TransportMode mode, GeoPointDto start, List<PoiDto> orderedCandidates) {
+        try {
+            return circuitBreaker.executeSupplier(() -> tableWithRetry(mode, start, orderedCandidates));
+        } catch (CallNotPermittedException ex) {
+            log.warn("OSRM circuit is open; skipping the call");
+            throw new UpstreamServiceException(
+                    ErrorCode.ROUTING_PROVIDER_UNAVAILABLE, "Routing provider is unavailable", ex);
+        }
+    }
+
+    private RoutingMatrix tableWithRetry(
+            TransportMode mode, GeoPointDto start, List<PoiDto> orderedCandidates) {
+        int expectedSize = orderedCandidates.size() + 1;
+        String coordinates = coordinates(start, orderedCandidates);
+        String url = baseUrl + "/table/v1/" + profile(mode) + "/" + coordinates
+                + "?annotations=duration,distance";
+
+        RestClientException lastFailure = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                JsonNode body = restClient.get().uri(URI.create(url)).retrieve().body(JsonNode.class);
+                if (body == null) {
+                    throw contractFailure("empty body");
+                }
+                return parseMatrix(body, expectedSize);
+            } catch (RestClientException ex) {
+                lastFailure = ex;
+                if (!isRetryable(ex)) {
+                    break;
+                }
+            }
+            if (attempt == 1) {
+                sleep();
+            }
+        }
+        log.warn("Routing matrix failed: {}", lastFailure == null ? "unknown" : lastFailure.getMessage());
+        throw new UpstreamServiceException(
+                ErrorCode.ROUTING_PROVIDER_UNAVAILABLE, "Routing provider is unavailable", lastFailure);
+    }
+
+    static RoutingMatrix parseMatrix(JsonNode body, int expectedSize) {
+        return new RoutingMatrix(
+                matrix(body.get("durations"), expectedSize, true, "durations"),
+                matrix(body.get("distances"), expectedSize, false, "distances"));
+    }
+
+    private static int[][] matrix(JsonNode node, int expectedSize, boolean secondsToMinutes, String field) {
+        if (node == null || !node.isArray() || node.size() == 0) {
+            throw contractFailure(field + " is missing or empty");
+        }
+        if (node.size() != expectedSize) {
+            throw contractFailure(
+                    field + " has " + node.size() + " rows but " + expectedSize + " were requested");
+        }
+        int[][] result = new int[expectedSize][expectedSize];
+        for (int i = 0; i < expectedSize; i++) {
+            JsonNode row = node.get(i);
+            if (row == null || !row.isArray() || row.size() != expectedSize) {
+                throw contractFailure(
+                        field + " row " + i + " does not have " + expectedSize + " columns");
+            }
+            for (int j = 0; j < expectedSize; j++) {
+                JsonNode cell = row.get(j);
+                if (cell == null || cell.isNull() || !cell.isNumber()) {
+                    result[i][j] = RoutingMatrix.UNREACHABLE;
+                } else if (secondsToMinutes) {
+                    result[i][j] = (int) Math.round(cell.asDouble() / 60.0);
+                } else {
+                    result[i][j] = (int) Math.round(cell.asDouble());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static UpstreamServiceException contractFailure(String detail) {
+        return new UpstreamServiceException(
+                ErrorCode.ROUTING_PROVIDER_UNAVAILABLE,
+                "Routing provider returned an invalid matrix: " + detail);
+    }
+
+    static boolean isRetryable(RestClientException ex) {
+        if (ex instanceof ResourceAccessException) {
+            return true;
+        }
+        return ex instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().value() >= 500;
+    }
+
+    static String profile(TransportMode mode) {
+        return mode == TransportMode.WALKING ? "foot" : "driving";
+    }
+
+    private static String coordinates(GeoPointDto start, List<PoiDto> candidates) {
+        StringBuilder builder = new StringBuilder(coordinate(start.longitude(), start.latitude()));
+        for (PoiDto poi : candidates) {
+            builder.append(';')
+                    .append(coordinate(poi.location().longitude(), poi.location().latitude()));
+        }
+        return builder.toString();
+    }
+
+    private static String coordinate(double lng, double lat) {
+        return String.format(Locale.ROOT, "%.6f,%.6f", lng, lat);
+    }
+
+    private void sleep() {
+        try {
+            Thread.sleep(retryBackoff.toMillis());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String trimSlash(String value) {
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+}

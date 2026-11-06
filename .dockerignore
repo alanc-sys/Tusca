@@ -1,0 +1,26 @@
+# Never ship build output or local secrets into the image build context.
+.git
+.gitignore
+.atl
+.env
+.env.*
+!.env.example
+
+**/target
+**/*.iml
+**/.idea
+**/.vscode
+
+docs
+openspec
+enunciadoPreliminar.md
+AGENTS.md
+README.md
+Dockerfile
+docker-compose.yml
+scripts
+keycloak
+db
+
+*.log
+.DS_Store

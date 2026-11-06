@@ -1,7 +1,7 @@
 # ADR-001: Elección de Arquitectura de Microservicios
 
 ## Estado
-Aceptado
+Supersedido por ADR-002
 
 ## Fecha
 2026-10-27

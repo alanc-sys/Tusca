@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    # Dedicated database container; no currentSchema, the database itself is the boundary.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-itinerary:5432/itinerary_db}
+    username: ${SPRING_DATASOURCE_USERNAME:itinerary_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:itinerary_pass}
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.rutatur: INFO

@@ -1,0 +1,72 @@
+schema: spec-driven
+
+project:
+  name: tusca
+  product_name: RutaTur
+  state: greenfield-docs-only
+  detected: 2026-11-03
+
+context: |
+  RutaTur: Java 21 language level / Spring Boot 3.3.x microservices, Maven multi-module build
+  (single parent pom at repo root). Modules: rutatur-common (shared JAR), api-gateway (Spring
+  Cloud Gateway, :8080), poi-service (:8081), itinerary-service (:8082), route-match-service (:8083).
+  PostgreSQL 15 with one dedicated database per service (poi_db, itinerary_db, match_db, keycloak_db).
+  Keycloak OIDC/JWT (ROLE_USER, ROLE_ADMIN), Resilience4j, OpenAPI/Swagger, Docker Compose.
+  Java package root: com.rutatur. Repository today holds only README.md, enunciadoPreliminar.md
+  and docs/ (Spanish); no pom.xml, no Java source, no docker-compose.yml.
+  Full detection record: openspec/project-context.md
+
+testing:
+  strict_tdd: true
+  build_tool: maven
+  build_tool_version: "3.9.16"
+  jdk_target: "21"
+  jdk_default_on_path: "25.0.4 (Microsoft OpenJDK) — not the target"
+  maven_runtime_jdk: "26.0.2.1 (Homebrew) — probe passed, JDK 21 Temurin recommended"
+  framework: JUnit 5 (Jupiter) + Mockito + AssertJ + Spring Boot Test
+  integration_framework: Spring Boot Test (MockMvc/WebTestClient) + Testcontainers (planned)
+  commands:
+    bootstrap_common: mvn -B -pl rutatur-common -am install -DskipTests
+    test_all: mvn -B verify
+    test_module: mvn -B -pl <module> -am test
+    test_single: mvn -B -pl <module> test -Dtest=<TestClass>#<method>
+    coverage: mvn -B verify jacoco:report
+    build_skip_tests: mvn -B -DskipTests package
+    container_stack: docker compose up -d
+  prerequisites_unmet:
+    - No pom.xml exists yet; every test command fails until the build bootstrap change lands.
+    - Docker daemon is not running; docker compose and Testcontainers cannot execute.
+    - Spring Cloud Gateway artifacts are not in the local Maven cache; gateway build needs network.
+
+rules:
+  proposal:
+    - State the module(s) touched and whether a new Maven module or Docker service is introduced
+    - Include rollback plan for changes touching docker-compose.yml or security configuration
+    - Keep the change reviewable within a 400-line review slice; split otherwise
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Cover business rules explicitly: time feasibility, no repeated POI, opt-in sharing, mutual consent, no unilateral contact reveal
+  design:
+    - Document inter-service contracts (paths, payloads, status codes) before implementation
+    - Include sequence diagrams for itinerary generation and route matching flows
+    - Record architecture decisions with rationale; add an ADR when a decision contradicts docs/decisions
+    - Respect schema-per-service ownership: a service never writes another service's schema
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Every implementation task names the module path it touches
+  apply:
+    guidelines:
+      - Follow Maven multi-module conventions (parent pom owns dependency and plugin versions)
+      - Place shared DTOs, exceptions, enums and GeoUtils in rutatur-common, not duplicated per service
+      - Never edit another service's database schema or Flyway migration path
+    tdd: true
+    test_command: mvn -B -pl <module> -am test
+    red_green_refactor: required for behaviour changes; write the failing test first
+  verify:
+    test_command: mvn -B verify
+    build_command: mvn -B -DskipTests package
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

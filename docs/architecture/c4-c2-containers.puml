@@ -28,7 +28,7 @@ System_Boundary(rutatur, "RutaTur Backend") {
     Container(rutaturCommon, "rutatur-common", "Maven JAR", "Componente reutilizable: DTOs, GeoUtils, excepciones, validadores. Usado por poi-service e itinerary-service")
     
     ' Persistencia
-    ContainerDb(postgres, "PostgreSQL", "PostgreSQL 15", "Base de datos relacional. Esquemas: poi_schema, itinerary_schema")
+    ContainerDb(postgres, "PostgreSQL (una instancia por servicio)", "PostgreSQL 15", "poi_db, itinerary_db y match_db en contenedores independientes")
 }
 
 ' Relaciones Actores

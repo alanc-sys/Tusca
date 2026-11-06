@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.rutatur: INFO
+    org.springframework.cloud.gateway: INFO
