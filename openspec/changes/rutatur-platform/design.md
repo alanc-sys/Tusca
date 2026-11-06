@@ -78,7 +78,7 @@ Plus `banDuplicateClasses` (blocks a module-local copy of a shared type) and `re
 | Q3 | Generation stateless vs save `itineraryId` | **Persist an unowned draft, claim once.** Generate writes `itinerary_draft` and returns its UUID as `itineraryId`. Save inserts `saved_itinerary` with the **same UUID** as `id` and `itinerary_id`, copying `request_data`/`response_data`; unknown or expired draft → `404`; second claim → `409`. Draft TTL 24 h, evaluated on read; no scheduled purge. | Satisfies the 201 `id` + `itineraryId` shape, guarantees `404` for unknown ids, keeps one id for `GET/DELETE /api/itineraries/{id}`, `/api/routes/share`, and `/internal/itineraries/{id}`, and keeps reads independent of external services. |
 | Q4 | Derived `409` / `404` | **Confirmed.** Rule: any accept/reject on a non-`PENDING` match → `409 MATCH_TRANSITION_INVALID` (status unchanged); unknown match → `404`; non-participant accept/reject → `403`; **any** non-`ACCEPTED` or non-participant contact request → `403`; unknown match on contact → `404`; unknown **or foreign** itinerary/share → `404 ITINERARY_NOT_FOUND` / `SHARE_NOT_FOUND`, never `403`. | `404` for ownership prevents existence disclosure in the history/share surfaces; `route-matching` mandates `403` for match access, so match existence is disclosed there by spec and is accepted (ids are UUIDv4). |
 | Q5 | `/api/admin/**` target | **In scope with one endpoint:** `GET /api/admin/itineraries?userId=` in `itinerary-service`, `ROLE_ADMIN`. Gateway routes `/api/admin/**` there. | A `MUST` route needs a target; inventing a service or returning `501` breaks `gateway-security`. Read-only, no cross-service aggregation. |
-| Q6 | `GET /api/routes/shareable` needs the caller's itinerary list, but only a detail internal endpoint exists | **Add** `GET /internal/itineraries?owner={subject}` (network + internal token) returning `InternalItinerarySummary[]`. | `route-sharing` requires listing shared *and* unshared owned itineraries; `route-match-service` cannot read `itinerary_schema`. Additive, no spec edit. |
+| Q6 | `GET /api/routes/shareable` needs the caller's itinerary list, but only a detail internal endpoint exists | **Add** `GET /internal/itineraries?owner={subject}` (network + internal token) returning `InternalItinerarySummary[]`. | `route-sharing` requires listing shared *and* unshared owned itineraries; `route-match-service` cannot read `itinerary_db`. Additive, no spec edit. |
 | Q7 | Contact payload has no source in any spec | **Keycloak Admin API** `GET /admin/realms/rutatur-realm/users/{sub}` via a `rutatur-match` service account with `view-users`; return `{userId, username, email}`; failure → `503 CONTACT_PROVIDER_UNAVAILABLE`, **no audit row**. | Share records must stay contact-free; the IdP already holds the profile; audit is written only on success, matching "every successful reveal appends a record". |
 
 ## 4. Shared Domain Model (`rutatur-common`)
@@ -340,24 +340,22 @@ Match lifecycle state machine (owned by `route-match-service`, not common):
 
 ## 8. Persistence Design
 
-One PostgreSQL 15 instance (`rutatur_db`), schema per service, **one role per service**. UUIDs are generated in the application (`UUID.randomUUID()`, v4) and assigned to the entity before persist; no `gen_random_uuid()` default, so tests can construct ids without a database.
+Four PostgreSQL 15 containers with **one database per service**: `poi_db` (`poi_user`),
+`itinerary_db` (`itinerary_user`), `match_db` (`match_user`) and `keycloak_db` (`keycloak_user`).
+Each container owns its volume, credentials and healthcheck; a service cannot reach another
+service's storage because it is a different server, not a different schema. Tables live in the
+default `public` schema and no JDBC URL carries `currentSchema`. UUIDs are generated in the
+application (`UUID.randomUUID()`, v4) and assigned to the entity before persist; no
+`gen_random_uuid()` default, so tests can construct ids without a database.
 
-### 8.1 `db/init` (executed once on an empty volume)
+### 8.1 `db/init` (executed once per empty volume, inside the owning container)
+
+Each script runs as the container user inside its own database, so it creates no roles, no
+schemas and no grants; ownership of the database is the whole permission model.
 
 ```sql
--- 00-roles.sql  (runs as POSTGRES_USER=rutatur)
-CREATE ROLE rutatur_poi       LOGIN PASSWORD 'rutatur_poi';
-CREATE ROLE rutatur_itinerary LOGIN PASSWORD 'rutatur_itinerary';
-CREATE ROLE rutatur_match     LOGIN PASSWORD 'rutatur_match';
-CREATE ROLE rutatur_kc        LOGIN PASSWORD 'rutatur_kc';
-CREATE DATABASE keycloak OWNER rutatur_kc;
-```
-
-```sql
--- 01-poi-schema.sql
-CREATE SCHEMA IF NOT EXISTS poi_schema AUTHORIZATION rutatur;
-SET search_path TO poi_schema;
-CREATE TABLE poi_cache (
+-- db/init/poi/01-poi.sql
+CREATE TABLE IF NOT EXISTS poi_cache (
   query_key   varchar(64)  NOT NULL,
   external_id varchar(64)  NOT NULL,
   name        text         NOT NULL,
@@ -372,24 +370,29 @@ CREATE TABLE poi_cache (
   expires_at  timestamptz  NOT NULL,
   PRIMARY KEY (query_key, external_id)
 );
-CREATE INDEX idx_poi_cache_lookup ON poi_cache (query_key, expires_at);
-GRANT USAGE ON SCHEMA poi_schema TO rutatur_poi;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA poi_schema TO rutatur_poi;
+CREATE INDEX IF NOT EXISTS idx_poi_cache_lookup ON poi_cache (query_key, expires_at);
+
+-- One row per query key so an empty provider result is cached as explicitly as a non-empty one.
+CREATE TABLE IF NOT EXISTS poi_query_cache (
+  query_key    varchar(64) PRIMARY KEY,
+  result_count integer     NOT NULL CHECK (result_count >= 0),
+  cached_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_poi_query_cache_expiry ON poi_query_cache (expires_at);
 ```
 
 ```sql
--- 02-itinerary-schema.sql
-CREATE SCHEMA IF NOT EXISTS itinerary_schema AUTHORIZATION rutatur;
-SET search_path TO itinerary_schema;
-CREATE TABLE itinerary_draft (
+-- db/init/itinerary/01-itinerary.sql
+CREATE TABLE IF NOT EXISTS itinerary_draft (
   id            uuid        PRIMARY KEY,
   request_data  jsonb       NOT NULL,
   response_data jsonb       NOT NULL,
   created_at    timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_itinerary_draft_created ON itinerary_draft (created_at);
+CREATE INDEX IF NOT EXISTS idx_itinerary_draft_created ON itinerary_draft (created_at);
 
-CREATE TABLE saved_itinerary (
+CREATE TABLE IF NOT EXISTS saved_itinerary (
   id              uuid         PRIMARY KEY,
   itinerary_id    uuid         NOT NULL,
   user_id         varchar(255) NOT NULL,
@@ -405,16 +408,12 @@ CREATE TABLE saved_itinerary (
   updated_at      timestamptz  NOT NULL DEFAULT now(),
   CONSTRAINT uk_saved_itinerary_itinerary UNIQUE (itinerary_id)
 );
-CREATE INDEX idx_saved_itinerary_owner ON saved_itinerary (user_id, created_at DESC);
-GRANT USAGE ON SCHEMA itinerary_schema TO rutatur_itinerary;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA itinerary_schema TO rutatur_itinerary;
+CREATE INDEX IF NOT EXISTS idx_saved_itinerary_owner ON saved_itinerary (user_id, created_at DESC);
 ```
 
 ```sql
--- 03-match-schema.sql
-CREATE SCHEMA IF NOT EXISTS match_schema AUTHORIZATION rutatur;
-SET search_path TO match_schema;
-CREATE TABLE shared_route (
+-- db/init/match/01-match.sql
+CREATE TABLE IF NOT EXISTS shared_route (
   id              uuid         PRIMARY KEY,
   itinerary_id    uuid         NOT NULL,
   owner_user_id   varchar(255) NOT NULL,
@@ -430,10 +429,10 @@ CREATE TABLE shared_route (
   expires_at      timestamptz  NOT NULL,
   CONSTRAINT uk_shared_route_itinerary UNIQUE (itinerary_id)
 );
-CREATE INDEX idx_shared_route_pool ON shared_route (is_active, expires_at);
-CREATE INDEX idx_shared_route_owner ON shared_route (owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_shared_route_pool ON shared_route (is_active, expires_at);
+CREATE INDEX IF NOT EXISTS idx_shared_route_owner ON shared_route (owner_user_id);
 
-CREATE TABLE route_match (
+CREATE TABLE IF NOT EXISTS route_match (
   id                      uuid         PRIMARY KEY,
   requester_user_id       varchar(255) NOT NULL,
   responder_user_id       varchar(255) NOT NULL,
@@ -449,22 +448,20 @@ CREATE TABLE route_match (
   responded_at            timestamptz,
   accepted_at             timestamptz
 );
-CREATE UNIQUE INDEX uk_route_match_open
+CREATE UNIQUE INDEX IF NOT EXISTS uk_route_match_open
   ON route_match (requester_user_id, shared_route_b_id) WHERE status = 'PENDING';
-CREATE INDEX idx_route_match_requester ON route_match (requester_user_id, requested_at DESC);
-CREATE INDEX idx_route_match_responder ON route_match (responder_user_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_route_match_requester ON route_match (requester_user_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_route_match_responder ON route_match (responder_user_id, requested_at DESC);
 
-CREATE TABLE user_contact_view (
-  id            uuid         PRIMARY KEY,
-  route_match_id uuid        NOT NULL REFERENCES route_match (id),
+CREATE TABLE IF NOT EXISTS user_contact_view (
+  id             uuid         PRIMARY KEY,
+  route_match_id uuid         NOT NULL REFERENCES route_match (id),
   viewer_user_id varchar(255) NOT NULL,
   viewed_user_id varchar(255) NOT NULL,
-  revealed_at   timestamptz  NOT NULL DEFAULT now(),
-  contact_info  jsonb        NOT NULL
+  revealed_at    timestamptz  NOT NULL DEFAULT now(),
+  contact_info   jsonb        NOT NULL
 );
-CREATE INDEX idx_user_contact_view_match ON user_contact_view (route_match_id);
-GRANT USAGE ON SCHEMA match_schema TO rutatur_match;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA match_schema TO rutatur_match;
+CREATE INDEX IF NOT EXISTS idx_user_contact_view_match ON user_contact_view (route_match_id);
 ```
 
 Deliberate omissions from `docs/02 §2.9`: `itinerary_stop` (stops live inside `response_data`; no scenario queries a stop row) and `shared_route.share_token` (the row id is already an unguessable UUID). `saved_itinerary` keeps no FK to `itinerary_draft` so drafts can be purged without touching history; the saved row owns its full snapshot.
@@ -474,13 +471,13 @@ Deliberate omissions from `docs/02 §2.9`: `itinerary_stop` (stops live inside `
 | Rule | Implementation |
 |---|---|
 | One entity package per service | `com.rutatur.<service>.persistence` — no entity is imported across modules |
-| Schema binding | `spring.jpa.properties.hibernate.default_schema=<schema>` + `@Table(schema="...")` for clarity |
+| Database binding | one datasource per service; entities use `@Table(name=...)` only, with no `schema` attribute |
 | Validation | `spring.jpa.hibernate.ddl-auto=validate` — startup fails if DDL and entity disagree |
 | JSONB | Hibernate 6 `@JdbcTypeCode(SqlTypes.JSON)` on `JsonNode`/`List<String>` fields |
 | Decimals | `numeric(5,4)` → `BigDecimal` with `precision=5, scale=4`; `numeric(9,6)` → `BigDecimal` for coordinates |
 | Times | `Instant` ↔ `timestamptz`; no `java.util.Date` |
-| Cross-schema | impossible by grant: each service's role has `USAGE` on exactly one schema |
-| Schema init | `docker-entrypoint-initdb.d` (mounted read-only, lexical order, once per empty volume); restart safety comes from the `postgres-data` volume, and every statement is `IF NOT EXISTS`-guarded |
+| Cross-service reads | impossible by topology: each service has its own container, database, user and volume |
+| Database init | `docker-entrypoint-initdb.d` mounted read-only per container, run once on an empty volume; restart safety comes from the per-service volumes, and every statement is `IF NOT EXISTS`-guarded |
 | Draft expiry | reads filter `created_at > now() - interval '24 hours'`; expired drafts remain rows but are invisible, and `saved_itinerary` is never affected |
 
 ## 9. Security Design
@@ -590,17 +587,20 @@ Compose builds with `build: { context: ., args: { MODULE: poi-service } }` etc. 
 
 | Service | Port host:container | Env (beyond `SPRING_PROFILES_ACTIVE=docker`) | Healthcheck | `depends_on` |
 |---|---|---|---|---|
-| `postgres` | `127.0.0.1:5432:5432` | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB=rutatur_db` | `pg_isready -U rutatur -d rutatur_db` | — |
-| `keycloak` | `8180:8080` | `KC_DB`, `KC_DB_URL`, `KC_DB_USERNAME/PASSWORD`, `KC_HOSTNAME=http://keycloak:8080`, `KC_HTTP_ENABLED=true`, `KC_HEALTH_ENABLED=true`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`; `command: start-dev --import-realm`; mounts `./keycloak:/opt/keycloak/data/import:ro` | `bash -c '{ printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3; grep -q "200" <&3; } 3<>/dev/tcp/localhost/9000'` | `postgres: service_healthy` |
-| `poi-service` | `127.0.0.1:8081:8081` | `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/rutatur_db?currentSchema=poi_schema`, `SPRING_DATASOURCE_USERNAME=rutatur_poi`, `SPRING_DATASOURCE_PASSWORD`, `RUTATUR_OVERPASS_URL`, `RUTATUR_INTERNAL_TOKEN` | wget `/actuator/health` | `postgres: service_healthy` |
-| `itinerary-service` | `127.0.0.1:8082:8082` | same pattern with `rutatur_itinerary`/`itinerary_schema`, `RUTATUR_POI_BASE_URL=http://poi-service:8081`, `RUTATUR_OSRM_BASE_URL`, `RUTATUR_INTERNAL_TOKEN`, `JWT_ISSUER_URI` | wget `/actuator/health` | `postgres`, `poi-service: service_healthy` |
-| `route-match-service` | `127.0.0.1:8083:8083` | `rutatur_match`/`match_schema`, `RUTATUR_ITINERARY_BASE_URL=http://itinerary-service:8082`, `KEYCLOAK_ADMIN_URL=http://keycloak:8080`, `KEYCLOAK_MATCH_CLIENT_SECRET`, `RUTATUR_INTERNAL_TOKEN`, `JWT_ISSUER_URI` | wget `/actuator/health` | `postgres`, `keycloak`, `itinerary-service: service_healthy` |
+| `postgres-poi` | `127.0.0.1:5433:5432` | `POSTGRES_USER=poi_user`, `POSTGRES_PASSWORD=${POI_DB_PASSWORD}`, `POSTGRES_DB=poi_db`; volume `postgres-poi-data` | `pg_isready -U poi_user -d poi_db` | — |
+| `postgres-itinerary` | `127.0.0.1:5434:5432` | `POSTGRES_USER=itinerary_user`, `POSTGRES_PASSWORD=${ITINERARY_DB_PASSWORD}`, `POSTGRES_DB=itinerary_db`; volume `postgres-itinerary-data` | `pg_isready -U itinerary_user -d itinerary_db` | — |
+| `postgres-match` | `127.0.0.1:5435:5432` | `POSTGRES_USER=match_user`, `POSTGRES_PASSWORD=${MATCH_DB_PASSWORD}`, `POSTGRES_DB=match_db`; volume `postgres-match-data` | `pg_isready -U match_user -d match_db` | — |
+| `postgres-keycloak` | `127.0.0.1:5436:5432` | `POSTGRES_USER=keycloak_user`, `POSTGRES_PASSWORD=${KEYCLOAK_DB_PASSWORD}`, `POSTGRES_DB=keycloak_db`; volume `postgres-keycloak-data` | `pg_isready -U keycloak_user -d keycloak_db` | — |
+| `keycloak` | `8180:8080` | `KC_DB=postgres`, `KC_DB_URL=jdbc:postgresql://postgres-keycloak:5432/keycloak_db`, `KC_DB_USERNAME=keycloak_user`, `KC_DB_PASSWORD`, `KC_HOSTNAME=http://keycloak:8080`, `KC_HTTP_ENABLED=true`, `KC_HEALTH_ENABLED=true`, `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`; `command: start-dev --import-realm`; mounts `./keycloak:/opt/keycloak/data/import:ro` | `bash -c '{ printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3; grep -q "200" <&3; } 3<>/dev/tcp/localhost/9000'` | `postgres-keycloak: service_healthy` |
+| `poi-service` | `127.0.0.1:8081:8081` | `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-poi:5432/poi_db`, `SPRING_DATASOURCE_USERNAME=poi_user`, `SPRING_DATASOURCE_PASSWORD=${POI_DB_PASSWORD}`, `RUTATUR_OVERPASS_URL`, `RUTATUR_INTERNAL_TOKEN` | wget `/actuator/health` | `postgres-poi: service_healthy` |
+| `itinerary-service` | `127.0.0.1:8082:8082` | `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-itinerary:5432/itinerary_db`, `SPRING_DATASOURCE_USERNAME=itinerary_user`, `SPRING_DATASOURCE_PASSWORD=${ITINERARY_DB_PASSWORD}`, `RUTATUR_POI_BASE_URL=http://poi-service:8081`, `RUTATUR_OSRM_BASE_URL`, `RUTATUR_INTERNAL_TOKEN`, `JWT_ISSUER_URI` | wget `/actuator/health` | `postgres-itinerary`, `poi-service: service_healthy` |
+| `route-match-service` | `127.0.0.1:8083:8083` | `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-match:5432/match_db`, `SPRING_DATASOURCE_USERNAME=match_user`, `SPRING_DATASOURCE_PASSWORD=${MATCH_DB_PASSWORD}`, `RUTATUR_ITINERARY_BASE_URL=http://itinerary-service:8082`, `KEYCLOAK_ADMIN_URL=http://keycloak:8080`, `KEYCLOAK_MATCH_CLIENT_SECRET`, `RUTATUR_INTERNAL_TOKEN`, `JWT_ISSUER_URI` | wget `/actuator/health` | `postgres-match`, `keycloak`, `itinerary-service: service_healthy` |
 | `api-gateway` | `8080:8080` | `JWT_ISSUER_URI`, `RUTATUR_CORS_ORIGINS`, route URIs (`POI_SERVICE_URI`, `ITINERARY_SERVICE_URI`, `ROUTE_MATCH_SERVICE_URI`) | wget `/actuator/health` | all three services `service_healthy`, `keycloak: service_healthy` |
 | `pgadmin` | `5050:80` | `PGADMIN_DEFAULT_EMAIL`, `PGADMIN_DEFAULT_PASSWORD` | — | profile `tools` only |
 
-Networking: one bridge network `rutatur-network`; only the gateway is published on all interfaces (`8080:8080`), Keycloak on `8180:8080`. Volumes: `postgres-data` only — Keycloak state lives in its `keycloak` database, so a separate `keycloak-data` volume (named in `docs/02 §2.12`) is unnecessary and omitted to avoid a second source of truth. `--import-realm` skips a realm that already exists, and every init script is `IF NOT EXISTS`-guarded, so a second `docker compose up -d` is clean.
+Networking: one bridge network `rutatur-network`; only the gateway is published on all interfaces (`8080:8080`), Keycloak on `8180:8080`, and every database and functional service only on `127.0.0.1`. Volumes: one per PostgreSQL container (`postgres-poi-data`, `postgres-itinerary-data`, `postgres-match-data`, `postgres-keycloak-data`) so each service's data survives restarts independently. `--import-realm` skips a realm that already exists, and every init script is `IF NOT EXISTS`-guarded, so a second `docker compose up -d` is clean.
 
-Every credential comes from `.env` / environment variables (`POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_MATCH_CLIENT_SECRET`, `RUTATUR_INTERNAL_TOKEN`); `.env.example` documents them and no default secret is written into a Dockerfile or `application.yml`.
+Every credential comes from `.env` / environment variables (`POI_DB_PASSWORD`, `ITINERARY_DB_PASSWORD`, `MATCH_DB_PASSWORD`, `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_MATCH_CLIENT_SECRET`, `RUTATUR_INTERNAL_TOKEN`); `.env.example` documents them and no default secret is written into a Dockerfile or `application.yml`.
 
 ## 11. Sequence Diagrams
 
@@ -613,7 +613,7 @@ sequenceDiagram
     participant I as itinerary-service
     participant P as poi-service
     participant O as OSRM
-    participant DB as itinerary_schema
+    participant DB as itinerary_db
     C->>G: POST /api/itinerary/generate (no token)
     G->>I: forward (public route)
     I->>I: validate ItineraryRequestDto (400 on failure)
@@ -655,7 +655,7 @@ sequenceDiagram
     participant M as route-match-service
     participant I as itinerary-service
     participant K as Keycloak
-    participant DB as match_schema
+    participant DB as match_db
     A->>G: POST /api/routes/share {itineraryId} (Bearer A)
     G->>M: forward (ROLE_USER, sub=A)
     M->>I: GET /internal/itineraries/{id} (+X-Internal-Token)

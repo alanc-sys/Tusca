@@ -10,14 +10,8 @@ Un ADR documenta una decisión arquitectónica importante junto con su contexto,
 
 | ADR | Título | Estado | Fecha |
 |-----|--------|--------|-------|
-| [ADR-001](./ADR-001-arquitectura-microservicios.md) | Elección de Arquitectura de Microservicios | Aceptado | 2026-10-27 |
+| [ADR-001](./ADR-001-arquitectura-microservicios.md) | Elección de Arquitectura de Microservicios | Supersedido por ADR-002 | 2026-10-27 |
 | [ADR-002](./ADR-002-tres-servicios-funcionales.md) | Tres Servicios Funcionales, Database per Service y Frontera de Seguridad en el Gateway | Aceptado (reemplaza ADR-001) | 2026-11-03 |
-| [ADR-003](./ADR-003-keycloak-idp.md) | Keycloak como Identity Provider | Aceptado | 2026-10-27 |
-| [ADR-004](./ADR-004-integracion-apis-externas.md) | Integración con APIs Externas (Overpass + OSRM) | Aceptado | 2026-10-27 |
-| [ADR-005](./ADR-005-componente-comun-jar.md) | Componente Común Reutilizable como JAR Maven | Aceptado | 2026-10-27 |
-| [ADR-006](./ADR-006-estrategia-persistencia.md) | Estrategia de Persistencia por Esquema | Aceptado | 2026-10-27 |
-| [ADR-007](./ADR-007-algoritmo-optimizacion.md) | Algoritmo de Optimización Greedy | Aceptado | 2026-10-27 |
-| [ADR-008](./ADR-008-colaboracion-microservicios.md) | Colaboración entre poi-service e itinerary-service | Aceptado | 2026-10-27 |
 
 > ADR-002 reemplaza a ADR-001: la arquitectura objetivo tiene tres servicios funcionales
 > (`poi-service`, `itinerary-service`, `route-match-service`), no dos.

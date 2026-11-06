@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Defines the runnable platform: reactor build, Compose stack, Keycloak realm, schemas, health-gated startup, and the smoke path; satisfied only when it starts healthy from one command.
+Defines the runnable platform: reactor build, Compose stack, Keycloak realm, one database per service, health-gated startup, and the smoke path; satisfied only when it starts healthy from one command.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ Defines the runnable platform: reactor build, Compose stack, Keycloak realm, sch
 
 ### Requirement: Single-command stack startup
 
-`docker compose up -d` MUST start PostgreSQL, Keycloak, the gateway, and all three functional services, each reaching healthy state. pgAdmin MAY be an optional profile.
+`docker compose up -d` MUST start one PostgreSQL container per service (`postgres-poi`, `postgres-itinerary`, `postgres-match`, `postgres-keycloak`), Keycloak, the gateway, and all three functional services, each reaching healthy state. pgAdmin MAY be an optional profile.
 
 #### Scenario: All containers healthy
 
@@ -31,7 +31,7 @@ Defines the runnable platform: reactor build, Compose stack, Keycloak realm, sch
 
 ### Requirement: Published ports
 
-The stack MUST expose gateway 8080, `poi-service` 8081, `itinerary-service` 8082, `route-match-service` 8083, PostgreSQL 5432, and Keycloak on host 8180 mapping container 8080.
+The stack MUST expose gateway 8080, `poi-service` 8081, `itinerary-service` 8082, `route-match-service` 8083, the four PostgreSQL containers on 5433-5436 (loopback only), and Keycloak on host 8180 mapping container 8080.
 
 #### Scenario: Port mapping
 
@@ -50,16 +50,16 @@ The imported realm `rutatur-realm` MUST define clients `rutatur-gateway` (confid
 - THEN the tokens MUST carry `ROLE_USER` and `ROLE_ADMIN` respectively
 - AND the gateway MUST accept them
 
-### Requirement: Schema-per-service initialization
+### Requirement: Database-per-service initialization
 
-Startup MUST create `poi_schema`, `itinerary_schema`, and `match_schema`, each owned by its service, and no service MUST read or write another service's schema.
+Startup MUST create one database per service (`poi_db`, `itinerary_db`, `match_db`, `keycloak_db`), each in its own container with its own user, password and volume. Tables live in the default `public` schema, and no service MUST read or write another service's database.
 
-#### Scenario: Schemas exist after startup
+#### Scenario: Databases exist after startup
 
-- GIVEN a fresh stack with an empty volume
+- GIVEN a fresh stack with empty volumes
 - WHEN initialization completes
-- THEN all three schemas MUST exist with only their owner's tables
-- AND any service write MUST target only its own schema
+- THEN each of the four databases MUST exist with only its owner's tables
+- AND any service write MUST target only its own database
 
 ### Requirement: Health-gated startup ordering
 
@@ -73,7 +73,7 @@ Every service MUST expose a health endpoint, and Compose MUST gate dependents on
 
 ### Requirement: Restart safety and persistence
 
-Restarting MUST NOT duplicate realm data or schema initialization, and MUST preserve persisted itineraries, shares, and matches through named volumes.
+Restarting MUST NOT duplicate realm data or database initialization, and MUST preserve persisted itineraries, shares, and matches through the per-service named volumes.
 
 #### Scenario: Second startup is clean
 

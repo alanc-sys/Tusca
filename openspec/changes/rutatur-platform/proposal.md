@@ -72,7 +72,7 @@ Ordering is forced by compilation dependencies: common → POI → itinerary →
 | # | Contradiction | Resolution (detail deferred to design) |
 |---|---|---|
 | 1 | Keycloak `8080` in README table vs `8180` in URLs; `JWT_ISSUER_URI` uses `keycloak:8080` | Container port **8080**, host port **8180**; issuer stays `http://keycloak:8080/realms/rutatur-realm` for in-network validation. Gateway owns host 8080. |
-| 2 | `route-match-service` absent from deployment guide and §2.12 compose list | Add as a Compose service on `:8083` with its own `match_schema` init and gateway route. |
+| 2 | `route-match-service` absent from deployment guide and §2.12 compose list | Add as a Compose service on `:8083` with its own `match_db` init and gateway route. |
 | 3 | ADR-001 says "2 functional services"; design has 3 | Code implements 3; write **ADR-002 superseding ADR-001**, not an edit of ADR-001. |
 | 4 | Gateway documented with Swagger aggregation but no gateway API contract | Gateway adds no business endpoints: its contract is the documented `/api/**` surface plus CORS/security behaviour. Owned paths: `/api/pois/**`, `/api/itinerary/**`, `/api/itineraries/**`, `/api/routes/**`, `/api/admin/**`. Contract fixed in design before W6. |
 | 5 | `docs/02 §2.10` and README require manual `mvn install` of `rutatur-common` | Reactor build (`mvn -B -pl <module> -am test`) supersedes it; the manual step is obsolete and MUST NOT appear in build instructions. |

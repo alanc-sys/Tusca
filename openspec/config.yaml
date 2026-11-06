@@ -10,7 +10,7 @@ context: |
   RutaTur: Java 21 language level / Spring Boot 3.3.x microservices, Maven multi-module build
   (single parent pom at repo root). Modules: rutatur-common (shared JAR), api-gateway (Spring
   Cloud Gateway, :8080), poi-service (:8081), itinerary-service (:8082), route-match-service (:8083).
-  PostgreSQL 15 with schema per service (poi_schema, itinerary_schema, match_schema).
+  PostgreSQL 15 with one dedicated database per service (poi_db, itinerary_db, match_db, keycloak_db).
   Keycloak OIDC/JWT (ROLE_USER, ROLE_ADMIN), Resilience4j, OpenAPI/Swagger, Docker Compose.
   Java package root: com.rutatur. Repository today holds only README.md, enunciadoPreliminar.md
   and docs/ (Spanish); no pom.xml, no Java source, no docker-compose.yml.
