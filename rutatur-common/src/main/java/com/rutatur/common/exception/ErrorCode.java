@@ -1,0 +1,34 @@
+package com.rutatur.common.exception;
+
+/**
+ * Códigos de error de plataforma desacoplados del stack web de Spring (usa int HTTP primitivo).
+ */
+public enum ErrorCode {
+
+    VALIDATION_ERROR(400, "Invalid request parameters"),
+    INVALID_STATE_TRANSITION(400, "Invalid state transition"),
+    UNAUTHORIZED(401, "Authentication is required"),
+    FORBIDDEN(403, "Access denied"),
+    CONSENT_REQUIRED(403, "Mutual consent is required to access contact details"),
+    RESOURCE_NOT_FOUND(404, "Requested resource was not found"),
+    DUPLICATE_RESOURCE(409, "Resource already exists"),
+    BUSINESS_RULE_VIOLATION(422, "Business rule violation"),
+    INSUFFICIENT_TIME(422, "Available time is insufficient for the requested itinerary"),
+    EXTERNAL_SERVICE_UNAVAILABLE(503, "External service is currently unavailable");
+
+    private final int httpStatus;
+    private final String defaultMessage;
+
+    ErrorCode(int httpStatus, String defaultMessage) {
+        this.httpStatus = httpStatus;
+        this.defaultMessage = defaultMessage;
+    }
+
+    public int getHttpStatus() {
+        return httpStatus;
+    }
+
+    public String getDefaultMessage() {
+        return defaultMessage;
+    }
+}

@@ -8,14 +8,16 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 ```text
 .
+├── pom.xml                         # Reactor Maven padre (Java 21, Spring Boot 3.3.5, Spring Cloud 2023.0.5)
 ├── docker-compose.yml              # Orquestador raíz (usa `include:`, sin definir contenedores)
 ├── .env.example                    # Plantilla de variables de entorno
 ├── docs/                           # Enunciado, rúbrica, propuesta y ADRs
 │   └── decisions/
 │       └── ADR-001-database-per-service.md
-└── infra/
-    ├── postgres/                   # PostgreSQL 15 con bases y usuarios aislados por servicio
-    └── keycloak/                   # Keycloak 25 persistido en Postgres + importación automática del realm
+├── infra/
+│   ├── postgres/                   # PostgreSQL 15 con bases y usuarios aislados por servicio
+│   └── keycloak/                   # Keycloak 25 persistido en Postgres + importación automática del realm
+└── rutatur-common/                 # JAR compartido en .m2 (DTOs, enums, errores, seguridad, GeoUtils)
 ```
 
 ### Principios de infraestructura
@@ -59,7 +61,8 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 ## Hoja de ruta de módulos
 
 - [x] Infraestructura base (`postgres` + `keycloak` + orquestador raíz)
-- [ ] `rutatur-common` (librería Maven compartida: DTOs, errores, seguridad y utilidades)
+- [x] `rutatur-common` (librería Maven compartida: DTOs, errores, seguridad y utilidades)
+  - Instalación en `.m2`: `mvn -pl rutatur-common install`
 - [ ] `api-gateway`
 - [ ] `poi-service`
 - [ ] `itinerary-service`
