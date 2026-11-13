@@ -1,0 +1,103 @@
+{
+  "realm": "rutatur",
+  "enabled": true,
+  "displayName": "RutaTur",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_USER",
+        "description": "Turista / Usuario final de RutaTur"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Administrador de la plataforma RutaTur"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "rutatur-client",
+      "name": "RutaTur API Client",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:8180/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "turista1",
+      "email": "turista1@rutatur.local",
+      "firstName": "Ana",
+      "lastName": "Turista",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "turista123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "turista2",
+      "email": "turista2@rutatur.local",
+      "firstName": "Lucas",
+      "lastName": "Viajero",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "turista123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "admin",
+      "email": "admin@rutatur.local",
+      "firstName": "Admin",
+      "lastName": "RutaTur",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_ADMIN",
+        "ROLE_USER"
+      ]
+    }
+  ]
+}

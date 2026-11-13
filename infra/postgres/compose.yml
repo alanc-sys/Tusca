@@ -1,0 +1,57 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rutatur-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Falta POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rutatur}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak_user}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-changeme_keycloak_db}
+      POI_DB_USER: ${POI_DB_USER:-poi_user}
+      POI_DB_PASSWORD: ${POI_DB_PASSWORD:-changeme_poi_db}
+      ITINERARY_DB_USER: ${ITINERARY_DB_USER:-itinerary_user}
+      ITINERARY_DB_PASSWORD: ${ITINERARY_DB_PASSWORD:-changeme_itinerary_db}
+      MATCH_DB_USER: ${MATCH_DB_USER:-match_user}
+      MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:-changeme_match_db}
+    ports:
+      # Expuesto solo en loopback para evitar acceso externo directo
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - rutatur-network
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: rutatur-pgadmin
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@rutatur.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rutatur-network
+
+volumes:
+  postgres_data:
+    name: rutatur_postgres_data
+
+networks:
+  rutatur-network:
+    name: rutatur-network
+    driver: bridge

@@ -1,0 +1,12 @@
+name: rutatur
+
+# Orquestador raíz: no define contenedores ni detalles de build/runtime.
+# Cada componente de infraestructura y microservicio es dueño de su propio compose.yml y Dockerfile.
+include:
+  - path: ./infra/postgres/compose.yml
+  - path: ./infra/keycloak/compose.yml
+  # Próximos módulos a sumar 1 por 1:
+  # - path: ./api-gateway/compose.yml
+  # - path: ./poi-service/compose.yml
+  # - path: ./itinerary-service/compose.yml
+  # - path: ./route-match-service/compose.yml
