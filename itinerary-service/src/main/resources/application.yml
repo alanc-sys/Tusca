@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: itinerary-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/itinerary_db}
+    username: ${ITINERARY_DB_USER:itinerary_user}
+    password: ${ITINERARY_DB_PASSWORD:changeme_itinerary_db}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/rutatur}
+
+services:
+  poi:
+    url: ${POI_SERVICE_URI:http://poi-service:8081}
+
+osrm:
+  api:
+    url: ${OSRM_API_URL:https://router.project-osrm.org}
+    timeout-ms: 5000
+
+rutatur:
+  internal-token: ${INTERNAL_SERVICE_TOKEN:changeme_internal_token}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      osrm:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+  retry:
+    instances:
+      osrm:
+        max-attempts: 2
+        wait-duration: 300ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

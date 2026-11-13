@@ -33,6 +33,7 @@
         <module>rutatur-common</module>
         <module>api-gateway</module>
         <module>poi-service</module>
+        <module>itinerary-service</module>
     </modules>
 
     <dependencyManagement>

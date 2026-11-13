@@ -1,0 +1,21 @@
+meta {
+  name: Turista 1 elimina su itinerario (204)
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/itineraries/{{itineraryId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Elimina con 204 No Content", function() {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

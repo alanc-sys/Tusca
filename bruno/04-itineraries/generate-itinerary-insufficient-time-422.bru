@@ -1,0 +1,30 @@
+meta {
+  name: Tiempo insuficiente retorna 422 (RN-01)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/itinerary/generate
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "startPoint": {
+      "latitude": -31.4170,
+      "longitude": -64.1830
+    },
+    "availableTimeMinutes": 5,
+    "radiusMeters": 1500,
+    "transportMode": "WALKING"
+  }
+}
+
+tests {
+  test("Retorna 422 INSUFFICIENT_TIME", function() {
+    expect(res.getStatus()).to.equal(422);
+    expect(res.getBody().code).to.equal("INSUFFICIENT_TIME");
+  });
+}

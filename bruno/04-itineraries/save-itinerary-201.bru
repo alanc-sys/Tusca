@@ -1,0 +1,56 @@
+meta {
+  name: Guardar itinerario como Turista 1 (201)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/itineraries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+body:json {
+  {
+    "name": "Tarde cultural por Córdoba",
+    "startPoint": {
+      "latitude": -31.4170,
+      "longitude": -64.1830
+    },
+    "transportMode": "WALKING",
+    "totalDurationMinutes": 95,
+    "stops": [
+      {
+        "poiId": "node-seed-1",
+        "visitOrder": 1,
+        "stayDurationMinutes": 30,
+        "travelTimeToNextMinutes": 5,
+        "distanceToNextMeters": 250
+      },
+      {
+        "poiId": "node-seed-2",
+        "visitOrder": 2,
+        "stayDurationMinutes": 60,
+        "travelTimeToNextMinutes": 0,
+        "distanceToNextMeters": 0
+      }
+    ]
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("itineraryId", res.getBody().id);
+  }
+}
+
+tests {
+  test("Status 201 y devuelve ID guardado", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().id).to.be.a("string");
+  });
+}

@@ -1,0 +1,22 @@
+meta {
+  name: Turista 2 intenta leer itinerario de Turista 1 (403 - RN-12)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/itineraries/{{itineraryId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista2}}
+}
+
+tests {
+  test("Rechaza acceso cruzado con 403 FORBIDDEN", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("FORBIDDEN");
+  });
+}

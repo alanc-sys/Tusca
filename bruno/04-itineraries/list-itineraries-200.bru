@@ -1,0 +1,23 @@
+meta {
+  name: Listar itinerarios de Turista 1 (200)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/itineraries
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Status 200 y contiene el itinerario guardado", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.be.an("array");
+    expect(res.getBody().length).to.be.greaterThan(0);
+  });
+}

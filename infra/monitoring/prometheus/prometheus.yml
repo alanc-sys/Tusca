@@ -21,13 +21,14 @@ scrape_configs:
         labels:
           service: poi-service
 
+  - job_name: itinerary-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["itinerary-service:8082"]
+        labels:
+          service: itinerary-service
+
   # Próximos microservicios a habilitar a medida que se implementen:
-  # - job_name: itinerary-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets: ["itinerary-service:8082"]
-  #       labels:
-  #         service: itinerary-service
   # - job_name: route-match-service
   #   metrics_path: /actuator/prometheus
   #   static_configs:

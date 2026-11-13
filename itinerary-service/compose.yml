@@ -1,0 +1,39 @@
+services:
+  itinerary-service:
+    build:
+      context: ..
+      dockerfile: itinerary-service/Dockerfile
+    container_name: rutatur-itinerary-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/itinerary_db
+      ITINERARY_DB_USER: ${ITINERARY_DB_USER:-itinerary_user}
+      ITINERARY_DB_PASSWORD: ${ITINERARY_DB_PASSWORD:-changeme_itinerary_db}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/rutatur}
+      POI_SERVICE_URI: ${POI_SERVICE_URI:-http://poi-service:8081}
+      OSRM_API_URL: ${OSRM_API_URL:-https://router.project-osrm.org}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Falta INTERNAL_SERVICE_TOKEN en .env}
+    ports:
+      # Expuesto solo en loopback (acceso externo vía api-gateway:8080)
+      - "127.0.0.1:${ITINERARY_SERVICE_PORT:-8082}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      poi-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - rutatur-network
+
+networks:
+  rutatur-network:
+    name: rutatur-network
+    driver: bridge

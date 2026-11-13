@@ -8,6 +8,6 @@ include:
   - path: ./infra/monitoring/compose.yml
   - path: ./api-gateway/compose.yml
   - path: ./poi-service/compose.yml
+  - path: ./itinerary-service/compose.yml
   # Próximos módulos a sumar 1 por 1:
-  # - path: ./itinerary-service/compose.yml
   # - path: ./route-match-service/compose.yml

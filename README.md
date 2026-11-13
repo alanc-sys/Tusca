@@ -23,6 +23,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 ├── rutatur-common/                 # JAR compartido en .m2 (DTOs, enums, errores, seguridad, GeoUtils)
 ├── api-gateway/                    # Spring Cloud Gateway reactivo (puerto 8080, JWT, Swagger agregado)
 ├── poi-service/                    # Búsqueda/caché de POIs con Overpass API y Resilience4j (puerto 8081)
+├── itinerary-service/              # Motor optimizador con OSRM y CRUD de itinerarios (puerto 8082)
 └── bruno/                          # Colección de pruebas API encadenadas (entorno `local`)
 ```
 
@@ -60,6 +61,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 | --- | --- | --- |
 | API Gateway | `8080` | Host (`http://localhost:8080`, Swagger en `/swagger-ui.html`) |
 | POI Service | `8081` | Solo `127.0.0.1` (consumo público vía Gateway) |
+| Itinerary Service | `8082` | Solo `127.0.0.1` (consumo público vía Gateway) |
 | Keycloak | `8180` | Host (`http://localhost:8180`) |
 | Grafana | `3000` | Host (`http://localhost:3000`, dashboard `RutaTur — Microservices Overview`) |
 | Prometheus | `9090` | Solo `127.0.0.1` |
@@ -74,7 +76,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 - [x] `rutatur-common` (librería Maven compartida: DTOs, errores, seguridad y utilidades)
   - Instalación en `.m2`: `mvn -pl rutatur-common install`
 - [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)
-- [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` + `03-pois` con assertions)
+- [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` + `03-pois` + `04-itineraries` con assertions)
 - [x] `poi-service` (Overpass API, caché geográfico por área, fallback resiliente, `/internal/pois/search`)
-- [ ] `itinerary-service`
+- [x] `itinerary-service` (colaboración con `poi-service`, OSRM + fallback Haversine, CRUD protegido por JWT)
 - [ ] `route-match-service`
