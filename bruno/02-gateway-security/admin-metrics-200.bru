@@ -1,0 +1,23 @@
+meta {
+  name: Admin consulta métricas del Gateway (200)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/admin/metrics
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenAdmin}}
+}
+
+tests {
+  test("Retorna 200 con métricas del gateway", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().service).to.equal("api-gateway");
+    expect(res.getBody().status).to.equal("UP");
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: Sin token en ruta protegida (401)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/itineraries
+  body: none
+  auth: none
+}
+
+tests {
+  test("Retorna 401 ApiError", function() {
+    expect(res.getStatus()).to.equal(401);
+    expect(res.getBody().code).to.equal("UNAUTHORIZED");
+  });
+}

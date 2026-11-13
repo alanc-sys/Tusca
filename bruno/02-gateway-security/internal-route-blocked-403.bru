@@ -1,0 +1,22 @@
+meta {
+  name: Bloqueo externo a /internal/** (403)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/internal/pois/search
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Bloquea /internal/** con 403 FORBIDDEN", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("FORBIDDEN");
+  });
+}

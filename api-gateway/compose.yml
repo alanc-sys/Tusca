@@ -1,0 +1,31 @@
+services:
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: api-gateway/Dockerfile
+    container_name: rutatur-gateway
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/rutatur}
+      POI_SERVICE_URI: ${POI_SERVICE_URI:-http://poi-service:8081}
+      ITINERARY_SERVICE_URI: ${ITINERARY_SERVICE_URI:-http://itinerary-service:8082}
+      ROUTE_MATCH_SERVICE_URI: ${ROUTE_MATCH_SERVICE_URI:-http://route-match-service:8083}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - rutatur-network
+
+networks:
+  rutatur-network:
+    name: rutatur-network
+    driver: bridge

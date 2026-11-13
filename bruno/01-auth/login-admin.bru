@@ -1,0 +1,31 @@
+meta {
+  name: Login Admin (ROLE_ADMIN)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: {{clientId}}
+  username: {{adminUser}}
+  password: {{adminPass}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    bru.setEnvVar("tokenAdmin", res.getBody().access_token);
+  }
+}
+
+tests {
+  test("Status 200 y access_token presente", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().access_token).to.be.a("string");
+  });
+}

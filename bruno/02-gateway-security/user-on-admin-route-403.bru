@@ -1,0 +1,22 @@
+meta {
+  name: ROLE_USER en endpoint Admin (403)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/admin/routes
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Retorna 403 ApiError por rol insuficiente", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("FORBIDDEN");
+  });
+}

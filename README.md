@@ -17,7 +17,9 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 ├── infra/
 │   ├── postgres/                   # PostgreSQL 15 con bases y usuarios aislados por servicio
 │   └── keycloak/                   # Keycloak 25 persistido en Postgres + importación automática del realm
-└── rutatur-common/                 # JAR compartido en .m2 (DTOs, enums, errores, seguridad, GeoUtils)
+├── rutatur-common/                 # JAR compartido en .m2 (DTOs, enums, errores, seguridad, GeoUtils)
+├── api-gateway/                    # Spring Cloud Gateway reactivo (puerto 8080, JWT, Swagger agregado)
+└── bruno/                          # Colección de pruebas API encadenadas (entorno `local`)
 ```
 
 ### Principios de infraestructura
@@ -52,6 +54,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 | Servicio | Puerto | Alcance |
 | --- | --- | --- |
+| API Gateway | `8080` | Host (`http://localhost:8080`, Swagger en `/swagger-ui.html`) |
 | Keycloak | `8180` | Host (`http://localhost:8180`) |
 | PostgreSQL 15 | `5432` | Solo `127.0.0.1` |
 | pgAdmin *(perfil `tools`)* | `5050` | Solo `127.0.0.1` |
@@ -63,7 +66,8 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 - [x] Infraestructura base (`postgres` + `keycloak` + orquestador raíz)
 - [x] `rutatur-common` (librería Maven compartida: DTOs, errores, seguridad y utilidades)
   - Instalación en `.m2`: `mvn -pl rutatur-common install`
-- [ ] `api-gateway`
+- [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)
+- [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` con assertions)
 - [ ] `poi-service`
 - [ ] `itinerary-service`
 - [ ] `route-match-service`

@@ -1,0 +1,66 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/rutatur}
+  cloud:
+    gateway:
+      routes:
+        - id: poi-service
+          uri: ${POI_SERVICE_URI:http://poi-service:8081}
+          predicates:
+            - Path=/api/pois/**
+        - id: itinerary-service
+          uri: ${ITINERARY_SERVICE_URI:http://itinerary-service:8082}
+          predicates:
+            - Path=/api/itinerary/**,/api/itineraries/**
+        - id: route-match-service
+          uri: ${ROUTE_MATCH_SERVICE_URI:http://route-match-service:8083}
+          predicates:
+            - Path=/api/routes/**
+        - id: poi-service-docs
+          uri: ${POI_SERVICE_URI:http://poi-service:8081}
+          predicates:
+            - Path=/poi-service/v3/api-docs
+          filters:
+            - RewritePath=/poi-service/v3/api-docs, /v3/api-docs
+        - id: itinerary-service-docs
+          uri: ${ITINERARY_SERVICE_URI:http://itinerary-service:8082}
+          predicates:
+            - Path=/itinerary-service/v3/api-docs
+          filters:
+            - RewritePath=/itinerary-service/v3/api-docs, /v3/api-docs
+        - id: route-match-service-docs
+          uri: ${ROUTE_MATCH_SERVICE_URI:http://route-match-service:8083}
+          predicates:
+            - Path=/route-match-service/v3/api-docs
+          filters:
+            - RewritePath=/route-match-service/v3/api-docs, /v3/api-docs
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: api-gateway
+        url: /v3/api-docs
+      - name: poi-service
+        url: /poi-service/v3/api-docs
+      - name: itinerary-service
+        url: /itinerary-service/v3/api-docs
+      - name: route-match-service
+        url: /route-match-service/v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized

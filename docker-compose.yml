@@ -5,8 +5,8 @@ name: rutatur
 include:
   - path: ./infra/postgres/compose.yml
   - path: ./infra/keycloak/compose.yml
+  - path: ./api-gateway/compose.yml
   # Próximos módulos a sumar 1 por 1:
-  # - path: ./api-gateway/compose.yml
   # - path: ./poi-service/compose.yml
   # - path: ./itinerary-service/compose.yml
   # - path: ./route-match-service/compose.yml
