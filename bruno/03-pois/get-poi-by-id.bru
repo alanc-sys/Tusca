@@ -1,0 +1,18 @@
+meta {
+  name: Consultar detalle de POI por ID (Público)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/pois/{{firstPoiId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status 200 y POI coincide con ID", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().id).to.equal(bru.getEnvVar("firstPoiId"));
+  });
+}

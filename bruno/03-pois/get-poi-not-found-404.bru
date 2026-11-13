@@ -1,0 +1,18 @@
+meta {
+  name: POI inexistente retorna 404
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/pois/node-999999999999
+  body: none
+  auth: none
+}
+
+tests {
+  test("Retorna 404 RESOURCE_NOT_FOUND", function() {
+    expect(res.getStatus()).to.equal(404);
+    expect(res.getBody().code).to.equal("RESOURCE_NOT_FOUND");
+  });
+}

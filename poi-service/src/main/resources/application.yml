@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: poi-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/poi_db}
+    username: ${POI_DB_USER:poi_user}
+    password: ${POI_DB_PASSWORD:changeme_poi_db}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+overpass:
+  api:
+    url: ${OVERPASS_API_URL:https://overpass-api.de/api/interpreter}
+    timeout-ms: 8000
+
+poi:
+  cache:
+    ttl-hours: 24
+
+rutatur:
+  internal-token: ${INTERNAL_SERVICE_TOKEN:changeme_internal_token}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      overpass:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+  retry:
+    instances:
+      overpass:
+        max-attempts: 2
+        wait-duration: 500ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

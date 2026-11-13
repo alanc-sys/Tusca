@@ -1,0 +1,22 @@
+meta {
+  name: Endpoint interno con X-Internal-Token retorna 200 (RN-10)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{poiDirectUrl}}/internal/pois/search?lat=-31.4167&lon=-64.1836
+  body: none
+  auth: none
+}
+
+headers {
+  X-Internal-Token: {{internalToken}}
+}
+
+tests {
+  test("Permite acceso interno con token válido", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.be.an("array");
+  });
+}

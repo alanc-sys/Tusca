@@ -1,0 +1,18 @@
+meta {
+  name: Coordenadas inválidas retornan 400
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/pois/search?lat=999&lon=-64.18&radiusMeters=1500
+  body: none
+  auth: none
+}
+
+tests {
+  test("Retorna 400 VALIDATION_ERROR", function() {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody().code).to.equal("VALIDATION_ERROR");
+  });
+}

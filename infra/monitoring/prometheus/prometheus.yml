@@ -14,13 +14,14 @@ scrape_configs:
         labels:
           service: api-gateway
 
+  - job_name: poi-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["poi-service:8081"]
+        labels:
+          service: poi-service
+
   # Próximos microservicios a habilitar a medida que se implementen:
-  # - job_name: poi-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets: ["poi-service:8081"]
-  #       labels:
-  #         service: poi-service
   # - job_name: itinerary-service
   #   metrics_path: /actuator/prometheus
   #   static_configs:

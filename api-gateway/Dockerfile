@@ -8,7 +8,9 @@ COPY api-gateway/pom.xml api-gateway/pom.xml
 COPY rutatur-common/src rutatur-common/src
 COPY api-gateway/src api-gateway/src
 
-RUN mvn -pl api-gateway -am -DskipTests package
+RUN mvn -N install && \
+    mvn -f rutatur-common/pom.xml install -DskipTests && \
+    mvn -f api-gateway/pom.xml package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

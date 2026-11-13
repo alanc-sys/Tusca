@@ -12,6 +12,6 @@
 ## Regla para próximos servicios
 
 Todo nuevo microservicio que se agregue al repositorio **debe**:
-- Incluir su propio `Dockerfile` (multi-stage build desde la raíz del reactor para resolver `rutatur-common`).
+- Incluir su propio `Dockerfile` (multi-stage build desde la raíz del reactor compilando con `mvn -N install && mvn -f rutatur-common/pom.xml install -DskipTests && mvn -f <servicio>/pom.xml package -DskipTests`, evitando acoplarse a los demás `<modules>` del reactor).
 - Incluir su propio `compose.yml` conectado a `rutatur-network`.
 - Registrarse en la lista `include:` del `docker-compose.yml` raíz.

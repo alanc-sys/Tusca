@@ -1,0 +1,33 @@
+services:
+  poi-service:
+    build:
+      context: ..
+      dockerfile: poi-service/Dockerfile
+    container_name: rutatur-poi-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/poi_db
+      POI_DB_USER: ${POI_DB_USER:-poi_user}
+      POI_DB_PASSWORD: ${POI_DB_PASSWORD:-changeme_poi_db}
+      OVERPASS_API_URL: ${OVERPASS_API_URL:-https://overpass-api.de/api/interpreter}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Falta INTERNAL_SERVICE_TOKEN en .env}
+    ports:
+      # Expuesto solo en loopback (acceso externo vía api-gateway:8080)
+      - "127.0.0.1:${POI_SERVICE_PORT:-8081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - rutatur-network
+
+networks:
+  rutatur-network:
+    name: rutatur-network
+    driver: bridge
