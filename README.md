@@ -13,10 +13,13 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 ├── .env.example                    # Plantilla de variables de entorno
 ├── docs/                           # Enunciado, rúbrica, propuesta y ADRs
 │   └── decisions/
-│       └── ADR-001-database-per-service.md
+│       ├── ADR-001-database-per-service.md
+│       ├── ADR-002-modular-compose-include.md
+│       └── ADR-003-observability-prometheus-grafana.md
 ├── infra/
 │   ├── postgres/                   # PostgreSQL 15 con bases y usuarios aislados por servicio
-│   └── keycloak/                   # Keycloak 25 persistido en Postgres + importación automática del realm
+│   ├── keycloak/                   # Keycloak 25 persistido en Postgres + importación automática del realm
+│   └── monitoring/                 # Prometheus + Grafana con auto-provisioning de datasource y dashboard
 ├── rutatur-common/                 # JAR compartido en .m2 (DTOs, enums, errores, seguridad, GeoUtils)
 ├── api-gateway/                    # Spring Cloud Gateway reactivo (puerto 8080, JWT, Swagger agregado)
 └── bruno/                          # Colección de pruebas API encadenadas (entorno `local`)
@@ -56,6 +59,8 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 | --- | --- | --- |
 | API Gateway | `8080` | Host (`http://localhost:8080`, Swagger en `/swagger-ui.html`) |
 | Keycloak | `8180` | Host (`http://localhost:8180`) |
+| Grafana | `3000` | Host (`http://localhost:3000`, dashboard `RutaTur — Microservices Overview`) |
+| Prometheus | `9090` | Solo `127.0.0.1` |
 | PostgreSQL 15 | `5432` | Solo `127.0.0.1` |
 | pgAdmin *(perfil `tools`)* | `5050` | Solo `127.0.0.1` |
 
@@ -63,7 +68,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 ## Hoja de ruta de módulos
 
-- [x] Infraestructura base (`postgres` + `keycloak` + orquestador raíz)
+- [x] Infraestructura base (`postgres` + `keycloak` + `monitoring` + orquestador raíz)
 - [x] `rutatur-common` (librería Maven compartida: DTOs, errores, seguridad y utilidades)
   - Instalación en `.m2`: `mvn -pl rutatur-common install`
 - [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)

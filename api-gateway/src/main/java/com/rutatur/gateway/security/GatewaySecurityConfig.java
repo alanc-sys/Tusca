@@ -70,7 +70,7 @@ public class GatewaySecurityConfig {
                                 "/*/v3/api-docs/**",
                                 "/webjars/**"
                         ).permitAll()
-                        .pathMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .pathMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
 
                         // Endpoints administrativos (F-08)
                         .pathMatchers("/api/admin/**", "/actuator/**").hasRole("ADMIN")
