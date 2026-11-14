@@ -33,3 +33,5 @@ desktop.ini
 # Logs
 *.log
 logs/
+
+frontend

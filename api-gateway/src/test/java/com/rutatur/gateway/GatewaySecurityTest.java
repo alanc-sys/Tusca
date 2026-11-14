@@ -73,4 +73,26 @@ class GatewaySecurityTest {
                 .exchange()
                 .expectStatus().isOk();
     }
+
+    @Test
+    void corsPreflightFromFrontendOriginIsAllowedWithoutAuth() {
+        webTestClient.options()
+                .uri("/api/itineraries")
+                .header("Origin", "http://localhost:5173")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "Authorization")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
+    }
+
+    @Test
+    void corsHeaderIsIncludedOnPublicEndpointForAllowedOrigin() {
+        webTestClient.get()
+                .uri("/actuator/health")
+                .header("Origin", "http://localhost:5173")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
+    }
 }
