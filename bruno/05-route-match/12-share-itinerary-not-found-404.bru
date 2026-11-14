@@ -1,0 +1,28 @@
+meta {
+  name: Compartir itinerario inexistente debe dar 404
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+body:json {
+  {
+    "itineraryId": "00000000-0000-0000-0000-000000000000"
+  }
+}
+
+tests {
+  test("Status 404 RESOURCE_NOT_FOUND cuando itineraryId no existe", function() {
+    expect(res.getStatus()).to.equal(404);
+    expect(res.getBody().code).to.equal("RESOURCE_NOT_FOUND");
+  });
+}

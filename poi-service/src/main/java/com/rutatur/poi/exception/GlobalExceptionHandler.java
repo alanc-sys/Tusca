@@ -4,7 +4,12 @@ import com.rutatur.common.dto.ApiError;
 import com.rutatur.common.exception.ErrorCode;
 import com.rutatur.common.exception.RutaturException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -12,6 +17,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(RutaturException.class)
     public ResponseEntity<ApiError> handleRutaturException(RutaturException ex, HttpServletRequest request) {
@@ -23,5 +30,46 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleBadRequest(Exception ex, HttpServletRequest request) {
         ApiError error = ApiError.of(ErrorCode.VALIDATION_ERROR, ex.getMessage(), request.getRequestURI());
         return ResponseEntity.badRequest().body(error);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiError> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+        ApiError error = ApiError.of(
+                ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                "Tipo de contenido no soportado: " + ex.getContentType(),
+                request.getRequestURI());
+        return ResponseEntity.status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus()).body(error);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+        ApiError error = ApiError.of(
+                ErrorCode.METHOD_NOT_ALLOWED,
+                "Método HTTP no soportado: " + ex.getMethod(),
+                request.getRequestURI());
+        return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getHttpStatus()).body(error);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrity(
+            DataIntegrityViolationException ex, HttpServletRequest request) {
+        log.warn("Data integrity violation on {}: {}", request.getRequestURI(), ex.getMostSpecificCause().getMessage());
+        ApiError error = ApiError.of(
+                ErrorCode.VALIDATION_ERROR,
+                "Los datos enviados no cumplen las restricciones de integridad",
+                request.getRequestURI());
+        return ResponseEntity.badRequest().body(error);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnexpected(Exception ex, HttpServletRequest request) {
+        log.error("Unexpected error on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        ApiError error = ApiError.of(
+                ErrorCode.INTERNAL_ERROR,
+                "Error interno del servidor",
+                request.getRequestURI());
+        return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getHttpStatus()).body(error);
     }
 }

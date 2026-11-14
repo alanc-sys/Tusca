@@ -1,0 +1,43 @@
+meta {
+  name: Guardar itinerario con nombre mayor a 200 caracteres (400)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/itineraries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+body:json {
+  {
+    "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "startPoint": {
+      "latitude": -31.4201,
+      "longitude": -64.1888
+    },
+    "transportMode": "WALKING",
+    "totalDurationMinutes": 120,
+    "stops": [
+      {
+        "poiId": "{{firstPoiId}}",
+        "visitOrder": 1,
+        "stayDurationMinutes": 45,
+        "travelTimeToNextMinutes": 0,
+        "distanceToNextMeters": 0.0
+      }
+    ]
+  }
+}
+
+tests {
+  test("Rechaza nombre > 200 chars con 400 VALIDATION_ERROR", function() {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody().code).to.equal("VALIDATION_ERROR");
+  });
+}

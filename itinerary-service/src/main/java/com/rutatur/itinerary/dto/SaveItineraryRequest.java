@@ -7,11 +7,13 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
 public record SaveItineraryRequest(
         @NotBlank(message = "El nombre del itinerario es obligatorio")
+        @Size(max = 200, message = "El nombre no puede superar los 200 caracteres")
         String name,
 
         @NotNull(message = "startPoint es obligatorio")
@@ -29,6 +31,7 @@ public record SaveItineraryRequest(
 ) {
     public record SaveItineraryStopRequest(
             @NotBlank(message = "poiId es obligatorio")
+            @Size(max = 64, message = "poiId no puede superar los 64 caracteres")
             String poiId,
             @Min(1) int visitOrder,
             @Min(1) int stayDurationMinutes,

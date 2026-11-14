@@ -1,0 +1,27 @@
+meta {
+  name: Anti-spoofing de cabeceras internas en Gateway (403)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/admin/routes
+  body: none
+  auth: bearer
+}
+
+headers {
+  X-User-Roles: ROLE_ADMIN
+  X-User-Id: admin
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Gateway sanitiza X-User-Roles y rechaza con 403 FORBIDDEN", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("FORBIDDEN");
+  });
+}

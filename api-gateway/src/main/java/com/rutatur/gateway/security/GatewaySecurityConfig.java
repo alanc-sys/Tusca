@@ -7,7 +7,10 @@ import com.rutatur.common.exception.ErrorCode;
 import com.rutatur.common.security.KeycloakJwtRolesExtractor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.web.server.WebFilter;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -43,6 +46,18 @@ public class GatewaySecurityConfig {
 
     public GatewaySecurityConfig(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public WebFilter internalPathBlockFilter() {
+        return (exchange, chain) -> {
+            String path = exchange.getRequest().getPath().value();
+            if (path.equals("/internal") || path.startsWith("/internal/")) {
+                return writeApiError(exchange, ErrorCode.FORBIDDEN, "Acceso externo a endpoints internos prohibido");
+            }
+            return chain.filter(exchange);
+        };
     }
 
     @Bean

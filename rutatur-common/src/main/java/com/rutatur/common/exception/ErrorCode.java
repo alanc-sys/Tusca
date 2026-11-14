@@ -14,6 +14,9 @@ public enum ErrorCode {
     DUPLICATE_RESOURCE(409, "Resource already exists"),
     BUSINESS_RULE_VIOLATION(422, "Business rule violation"),
     INSUFFICIENT_TIME(422, "Available time is insufficient for the requested itinerary"),
+    METHOD_NOT_ALLOWED(405, "HTTP method not allowed"),
+    UNSUPPORTED_MEDIA_TYPE(415, "Unsupported media type"),
+    INTERNAL_ERROR(500, "Internal server error"),
     EXTERNAL_SERVICE_UNAVAILABLE(503, "External service is currently unavailable");
 
     private final int httpStatus;

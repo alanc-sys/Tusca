@@ -1,0 +1,22 @@
+meta {
+  name: Bloqueo externo a /internal/** sin JWT (403)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/internal/pois/search?lat=-31.4201&lon=-64.1888
+  body: none
+  auth: none
+}
+
+headers {
+  X-Internal-Token: {{internalToken}}
+}
+
+tests {
+  test("Bloquea /internal/** sin JWT con 403 FORBIDDEN (RN-10)", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("FORBIDDEN");
+  });
+}
