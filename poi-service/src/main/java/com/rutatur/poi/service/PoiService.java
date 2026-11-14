@@ -5,13 +5,9 @@ import com.rutatur.common.dto.PoiDto;
 import com.rutatur.common.exception.ErrorCode;
 import com.rutatur.common.exception.RutaturException;
 import com.rutatur.common.util.GeoUtils;
-import com.rutatur.poi.client.OverpassClient;
 import com.rutatur.poi.entity.PoiEntity;
-import com.rutatur.poi.entity.PoiSearchAreaEntity;
 import com.rutatur.poi.repository.PoiRepository;
 import com.rutatur.poi.repository.PoiSearchAreaRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,34 +21,32 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Orquesta la búsqueda geográfica de POIs con caché por zona, fallback resiliente ante fallos
- * de Overpass API y ponderación por categorías (RN-04).
+ * Orquesta la búsqueda geográfica de POIs con caché por zona (stale-while-revalidate),
+ * refresco asíncrono en segundo plano y ponderación por categorías (RN-04).
  */
 @Service
 public class PoiService {
 
-    private static final Logger log = LoggerFactory.getLogger(PoiService.class);
     private static final int MIN_RADIUS_METERS = 100;
     private static final int MAX_RADIUS_METERS = 20_000;
 
     private final PoiRepository poiRepository;
     private final PoiSearchAreaRepository searchAreaRepository;
-    private final OverpassClient overpassClient;
+    private final PoiRefreshWorker poiRefreshWorker;
     private final Duration cacheTtl;
 
     public PoiService(
             PoiRepository poiRepository,
             PoiSearchAreaRepository searchAreaRepository,
-            OverpassClient overpassClient,
+            PoiRefreshWorker poiRefreshWorker,
             @Value("${poi.cache.ttl-hours:24}") long cacheTtlHours
     ) {
         this.poiRepository = poiRepository;
         this.searchAreaRepository = searchAreaRepository;
-        this.overpassClient = overpassClient;
+        this.poiRefreshWorker = poiRefreshWorker;
         this.cacheTtl = Duration.ofHours(cacheTtlHours);
     }
 
-    @Transactional
     public List<PoiDto> searchPois(double lat, double lon, int radiusMeters, List<String> categories) {
         GeoUtils.validateCoordinates(lat, lon);
         if (radiusMeters < MIN_RADIUS_METERS || radiusMeters > MAX_RADIUS_METERS) {
@@ -65,11 +59,16 @@ public class PoiService {
         double gridLat = roundToGrid(lat);
         double gridLon = roundToGrid(lon);
 
+        List<PoiEntity> inRadius = findCachedWithinRadius(lat, lon, radiusMeters);
         if (!hasFreshAreaCache(gridLat, gridLon, radiusMeters)) {
-            refreshAreaFromOverpass(lat, lon, gridLat, gridLon, radiusMeters);
+            if (!inRadius.isEmpty()) {
+                poiRefreshWorker.scheduleRefresh(lat, lon, gridLat, gridLon, radiusMeters);
+            } else {
+                poiRefreshWorker.refreshAreaSync(lat, lon, gridLat, gridLon, radiusMeters);
+                inRadius = findCachedWithinRadius(lat, lon, radiusMeters);
+            }
         }
 
-        List<PoiEntity> inRadius = findCachedWithinRadius(lat, lon, radiusMeters);
         List<PoiEntity> prioritized = applyCategoryPreference(inRadius, categories, lat, lon);
 
         return prioritized.stream()
@@ -95,24 +94,6 @@ public class PoiService {
                 )
                 .filter(area -> area.getFetchedAt().isAfter(cutoff))
                 .isPresent();
-    }
-
-    private void refreshAreaFromOverpass(double lat, double lon, double gridLat, double gridLon, int radiusMeters) {
-        try {
-            List<PoiEntity> fetched = overpassClient.fetchPois(lat, lon, radiusMeters);
-            if (!fetched.isEmpty()) {
-                poiRepository.saveAll(fetched);
-            }
-            searchAreaRepository.save(new PoiSearchAreaEntity(gridLat, gridLon, radiusMeters, Instant.now()));
-        } catch (RuntimeException ex) {
-            log.warn("Fallo al consultar Overpass API ({}). Intentando fallback con caché local.", ex.getMessage());
-            List<PoiEntity> staleCached = findCachedWithinRadius(lat, lon, radiusMeters);
-            if (staleCached.isEmpty()) {
-                throw ex instanceof RutaturException rutaturEx
-                        ? rutaturEx
-                        : new RutaturException(ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE, "Overpass API no disponible y sin caché local");
-            }
-        }
     }
 
     private List<PoiEntity> findCachedWithinRadius(double lat, double lon, int radiusMeters) {

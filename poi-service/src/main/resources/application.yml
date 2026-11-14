@@ -16,7 +16,7 @@ spring:
 overpass:
   api:
     url: ${OVERPASS_API_URL:https://overpass-api.de/api/interpreter}
-    timeout-ms: 8000
+    timeout-ms: 50000
 
 poi:
   cache:
@@ -35,7 +35,7 @@ resilience4j:
   retry:
     instances:
       overpass:
-        max-attempts: 2
+        max-attempts: 1
         wait-duration: 500ms
 
 management:

@@ -1,6 +1,7 @@
 package com.rutatur.poi.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rutatur.common.exception.ErrorCode;
 import com.rutatur.common.exception.RutaturException;
 import com.rutatur.poi.entity.PoiEntity;
@@ -9,17 +10,22 @@ import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 /**
  * Cliente HTTP hacia Overpass API (OpenStreetMap) con soporte de mirrors de respaldo
@@ -44,10 +50,11 @@ public class OverpassClient {
 
     private final RestClient restClient;
     private final List<String> overpassUrls;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OverpassClient(
-            @Value("${overpass.api.url:https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter}") String overpassUrlsRaw,
-            @Value("${overpass.api.timeout-ms:6000}") int timeoutMs
+            @Value("${overpass.api.url:https://overpass-api.de/api/interpreter}") String overpassUrlsRaw,
+            @Value("${overpass.api.timeout-ms:50000}") int timeoutMs
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(timeoutMs);
@@ -59,6 +66,8 @@ public class OverpassClient {
                 .toList();
         this.restClient = RestClient.builder()
                 .requestFactory(requestFactory)
+                .defaultHeader(HttpHeaders.USER_AGENT, "RutaTur-POI-Service/1.0 (+https://rutatur.local)")
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .build();
     }
 
@@ -70,15 +79,19 @@ public class OverpassClient {
 
         for (String url : overpassUrls) {
             try {
-                JsonNode response = restClient.post()
+                byte[] rawBytes = restClient.post()
                         .uri(url)
                         .contentType(MediaType.TEXT_PLAIN)
                         .body(query)
                         .retrieve()
-                        .body(JsonNode.class);
+                        .body(byte[].class);
 
-                if (response != null && response.has("elements")) {
-                    return parseElements(response.get("elements"));
+                if (rawBytes != null && rawBytes.length > 0) {
+                    String rawBody = decodePayload(rawBytes);
+                    JsonNode response = objectMapper.readTree(rawBody);
+                    if (response != null && response.has("elements")) {
+                        return parseElements(response.get("elements"));
+                    }
                 }
             } catch (Exception ex) {
                 log.warn("Overpass mirror {} falló: {}", url, ex.getMessage());
@@ -98,7 +111,7 @@ public class OverpassClient {
         return String.format(
                 Locale.US,
                 """
-                [out:json][timeout:10];
+                [out:json][timeout:25];
                 (
                   node["tourism"~"museum|attraction|viewpoint|gallery"](around:%d,%f,%f);
                   node["leisure"="park"](around:%d,%f,%f);
@@ -176,5 +189,14 @@ public class OverpassClient {
             return street;
         }
         return tags.path("addr:city").asText("Sin dirección registrada");
+    }
+
+    private String decodePayload(byte[] rawBytes) throws IOException {
+        if (rawBytes.length >= 2 && rawBytes[0] == (byte) 0x1f && rawBytes[1] == (byte) 0x8b) {
+            try (GZIPInputStream gzipStream = new GZIPInputStream(new ByteArrayInputStream(rawBytes))) {
+                return new String(gzipStream.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        return new String(rawBytes, StandardCharsets.UTF_8);
     }
 }
