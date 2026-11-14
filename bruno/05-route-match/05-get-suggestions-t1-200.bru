@@ -1,0 +1,26 @@
+meta {
+  name: Obtener sugerencias de match para Turista 1 (200)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/suggestions?routeId={{sharedRoute1Id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Status 200 y sugiere ruta de Turista 2 con score >= 0.35", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body).to.be.an("array").that.is.not.empty;
+    const found = body.find(item => item.targetRouteId === bru.getEnvVar("sharedRoute2Id"));
+    expect(found).to.exist;
+    expect(found.similarityScore).to.be.at.least(0.35);
+  });
+}

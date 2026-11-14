@@ -34,6 +34,7 @@
         <module>api-gateway</module>
         <module>poi-service</module>
         <module>itinerary-service</module>
+        <module>route-match-service</module>
     </modules>
 
     <dependencyManagement>

@@ -1,0 +1,22 @@
+meta {
+  name: Intentar ver contacto en PENDING debe dar 403
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/contact
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Status 403 CONSENT_REQUIRED en estado PENDING", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("CONSENT_REQUIRED");
+  });
+}

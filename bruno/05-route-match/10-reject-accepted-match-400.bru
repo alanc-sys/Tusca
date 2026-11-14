@@ -1,0 +1,22 @@
+meta {
+  name: Rechazar match ya ACCEPTED debe dar 400
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/reject
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista2}}
+}
+
+tests {
+  test("Status 400 INVALID_STATE_TRANSITION (RN-09)", function() {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody().code).to.equal("INVALID_STATE_TRANSITION");
+  });
+}

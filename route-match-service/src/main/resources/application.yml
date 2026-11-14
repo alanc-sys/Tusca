@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: route-match-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/match_db}
+    username: ${MATCH_DB_USER:match_user}
+    password: ${MATCH_DB_PASSWORD:changeme_match_db}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/rutatur}
+
+services:
+  itinerary:
+    url: ${ITINERARY_SERVICE_URI:http://itinerary-service:8082}
+
+rutatur:
+  internal-token: ${INTERNAL_SERVICE_TOKEN:changeme_internal_token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

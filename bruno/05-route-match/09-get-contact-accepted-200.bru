@@ -1,0 +1,22 @@
+meta {
+  name: Obtener contacto tras consentimiento mutuo (200)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/contact
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Status 200 y revela contacto de Turista 2", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().counterpartyUsername).to.equal("turista2");
+  });
+}

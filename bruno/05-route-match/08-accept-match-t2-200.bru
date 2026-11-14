@@ -1,0 +1,24 @@
+meta {
+  name: Aceptar match como Turista 2 (200)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/accept
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista2}}
+}
+
+tests {
+  test("Status 200, estado ACCEPTED y consentimiento bilateral", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("ACCEPTED");
+    expect(res.getBody().consentA).to.equal(true);
+    expect(res.getBody().consentB).to.equal(true);
+  });
+}

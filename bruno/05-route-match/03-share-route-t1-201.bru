@@ -1,0 +1,34 @@
+meta {
+  name: Compartir ruta Turista 1 (201)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+body:json {
+  {
+    "itineraryId": "{{itineraryId}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("sharedRoute1Id", res.getBody().id);
+  }
+}
+
+tests {
+  test("Status 201 y ruta activa", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().active).to.equal(true);
+  });
+}

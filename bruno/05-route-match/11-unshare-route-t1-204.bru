@@ -1,0 +1,21 @@
+meta {
+  name: Dejar de compartir ruta Turista 1 (204)
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{baseUrl}}/api/routes/share/{{sharedRoute1Id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+tests {
+  test("Status 204 al desactivar ruta compartida", function() {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

@@ -28,10 +28,9 @@ scrape_configs:
         labels:
           service: itinerary-service
 
-  # Próximos microservicios a habilitar a medida que se implementen:
-  # - job_name: route-match-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets: ["route-match-service:8083"]
-  #       labels:
-  #         service: route-match-service
+  - job_name: route-match-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["route-match-service:8083"]
+        labels:
+          service: route-match-service
