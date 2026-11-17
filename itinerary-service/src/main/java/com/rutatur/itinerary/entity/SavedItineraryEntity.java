@@ -82,6 +82,28 @@ public class SavedItineraryEntity {
         this.stops.add(stop);
     }
 
+    public void clearStops() {
+        // Mantiene la instancia de colección administrada por Hibernate para que orphanRemoval funcione.
+        this.stops.clear();
+    }
+
+    public void updateName(String name) {
+        this.name = name;
+    }
+
+    public void updateTotalDurationMinutes(int totalDurationMinutes) {
+        this.totalDurationMinutes = totalDurationMinutes;
+    }
+
+    public void updateStartPoint(double startLatitude, double startLongitude) {
+        this.startLatitude = startLatitude;
+        this.startLongitude = startLongitude;
+    }
+
+    public void updateTransportMode(TransportMode transportMode) {
+        this.transportMode = transportMode;
+    }
+
     public UUID getId() {
         return id;
     }

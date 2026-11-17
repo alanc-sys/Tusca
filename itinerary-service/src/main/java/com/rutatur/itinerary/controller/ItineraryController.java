@@ -4,6 +4,7 @@ import com.rutatur.itinerary.dto.GenerateItineraryRequest;
 import com.rutatur.itinerary.dto.GeneratedItineraryResponse;
 import com.rutatur.itinerary.dto.SaveItineraryRequest;
 import com.rutatur.itinerary.dto.SavedItineraryResponse;
+import com.rutatur.itinerary.dto.UpdateItineraryRequest;
 import com.rutatur.itinerary.service.ItineraryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -13,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -61,6 +63,16 @@ public class ItineraryController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return itineraryService.getItinerary(id, jwt.getSubject());
+    }
+
+    @PatchMapping("/api/itineraries/{id}")
+    @Operation(summary = "Actualizar parcialmente un itinerario propio")
+    public SavedItineraryResponse updateItinerary(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody UpdateItineraryRequest request
+    ) {
+        return itineraryService.updateItinerary(id, jwt.getSubject(), request);
     }
 
     @DeleteMapping("/api/itineraries/{id}")

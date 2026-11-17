@@ -9,6 +9,10 @@ import com.rutatur.itinerary.client.OsrmClient;
 import com.rutatur.itinerary.client.PoiInternalClient;
 import com.rutatur.itinerary.dto.GenerateItineraryRequest;
 import com.rutatur.itinerary.dto.GeneratedItineraryResponse;
+import com.rutatur.itinerary.dto.SaveItineraryRequest;
+import com.rutatur.itinerary.dto.SavedItineraryResponse;
+import com.rutatur.itinerary.dto.UpdateItineraryRequest;
+import com.rutatur.itinerary.entity.ItineraryPoiEntity;
 import com.rutatur.itinerary.entity.SavedItineraryEntity;
 import com.rutatur.itinerary.repository.SavedItineraryRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -123,5 +129,110 @@ class ItineraryServiceTest {
 
         RutaturException ex = assertThrows(RutaturException.class, () -> itineraryService.getItinerary(id, "other-user"));
         assertEquals(ErrorCode.FORBIDDEN, ex.getErrorCode());
+    }
+
+    @Test
+    void updatesOnlyProvidedFieldsOnPatch() {
+        UUID id = UUID.randomUUID();
+        SavedItineraryEntity entity = new SavedItineraryEntity(
+                "user-owner", "Ruta Original", 90, -31.4167, -64.1836, TransportMode.WALKING, Instant.now()
+        );
+        entity.addStop(new ItineraryPoiEntity("node-1", 1, 30, 0, 0.0));
+
+        when(itineraryRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(itineraryRepository.save(any(SavedItineraryEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateItineraryRequest request = new UpdateItineraryRequest(
+                "Ruta Renombrada", null, null, null, null
+        );
+
+        SavedItineraryResponse response = itineraryService.updateItinerary(id, "user-owner", request);
+
+        assertEquals("Ruta Renombrada", response.name());
+        assertEquals(90, response.totalDurationMinutes());
+        assertEquals(TransportMode.WALKING, response.transportMode());
+        assertEquals(-31.4167, response.startPoint().latitude());
+        assertEquals(1, response.stops().size());
+        assertEquals("node-1", response.stops().get(0).poiId());
+        verify(itineraryRepository).save(entity);
+    }
+
+    @Test
+    void replacesStopsAndUpdatesAllProvidedFieldsOnPatch() {
+        UUID id = UUID.randomUUID();
+        SavedItineraryEntity entity = new SavedItineraryEntity(
+                "user-owner", "Ruta Original", 90, -31.4167, -64.1836, TransportMode.WALKING, Instant.now()
+        );
+        entity.addStop(new ItineraryPoiEntity("node-1", 1, 30, 0, 0.0));
+
+        when(itineraryRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(itineraryRepository.save(any(SavedItineraryEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateItineraryRequest request = new UpdateItineraryRequest(
+                "Ruta en Auto",
+                new GeoPointDto(-31.4200, -64.1880),
+                TransportMode.DRIVING,
+                110,
+                List.of(
+                        new SaveItineraryRequest.SaveItineraryStopRequest("node-2", 1, 45, 10, 1200.0),
+                        new SaveItineraryRequest.SaveItineraryStopRequest("node-3", 2, 55, 0, 0.0)
+                )
+        );
+
+        SavedItineraryResponse response = itineraryService.updateItinerary(id, "user-owner", request);
+
+        assertEquals("Ruta en Auto", response.name());
+        assertEquals(-31.4200, response.startPoint().latitude());
+        assertEquals(-64.1880, response.startPoint().longitude());
+        assertEquals(TransportMode.DRIVING, response.transportMode());
+        assertEquals(110, response.totalDurationMinutes());
+        assertEquals(2, response.stops().size());
+        assertEquals("node-2", response.stops().get(0).poiId());
+        assertEquals("node-3", response.stops().get(1).poiId());
+    }
+
+    @Test
+    void rejectsEmptyPatchWithValidationError() {
+        UUID id = UUID.randomUUID();
+        UpdateItineraryRequest request = new UpdateItineraryRequest(null, null, null, null, null);
+
+        RutaturException ex = assertThrows(
+                RutaturException.class,
+                () -> itineraryService.updateItinerary(id, "user-owner", request)
+        );
+
+        assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
+        verifyNoInteractions(itineraryRepository);
+    }
+
+    @Test
+    void forbidsUpdatingItineraryOwnedByAnotherUser() {
+        UUID id = UUID.randomUUID();
+        SavedItineraryEntity entity = new SavedItineraryEntity(
+                "user-owner", "Mi Ruta", 90, -31.4167, -64.1836, TransportMode.WALKING, Instant.now()
+        );
+        when(itineraryRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        UpdateItineraryRequest request = new UpdateItineraryRequest("Hack", null, null, null, null);
+
+        RutaturException ex = assertThrows(
+                RutaturException.class,
+                () -> itineraryService.updateItinerary(id, "other-user", request)
+        );
+        assertEquals(ErrorCode.FORBIDDEN, ex.getErrorCode());
+    }
+
+    @Test
+    void throws404WhenUpdatingNonExistentItinerary() {
+        UUID id = UUID.randomUUID();
+        when(itineraryRepository.findById(id)).thenReturn(Optional.empty());
+
+        UpdateItineraryRequest request = new UpdateItineraryRequest("Nuevo", null, null, null, null);
+
+        RutaturException ex = assertThrows(
+                RutaturException.class,
+                () -> itineraryService.updateItinerary(id, "user-owner", request)
+        );
+        assertEquals(ErrorCode.RESOURCE_NOT_FOUND, ex.getErrorCode());
     }
 }

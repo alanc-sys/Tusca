@@ -12,6 +12,7 @@ import com.rutatur.itinerary.dto.GeneratedItineraryResponse;
 import com.rutatur.itinerary.dto.ItineraryStopDto;
 import com.rutatur.itinerary.dto.SaveItineraryRequest;
 import com.rutatur.itinerary.dto.SavedItineraryResponse;
+import com.rutatur.itinerary.dto.UpdateItineraryRequest;
 import com.rutatur.itinerary.entity.ItineraryPoiEntity;
 import com.rutatur.itinerary.entity.SavedItineraryEntity;
 import com.rutatur.itinerary.repository.SavedItineraryRepository;
@@ -92,13 +93,7 @@ public class ItineraryService {
                 Instant.now()
         );
 
-        request.stops().forEach(stop -> entity.addStop(new ItineraryPoiEntity(
-                stop.poiId(),
-                stop.visitOrder(),
-                stop.stayDurationMinutes(),
-                stop.travelTimeToNextMinutes(),
-                stop.distanceToNextMeters()
-        )));
+        addStops(entity, request.stops());
 
         return toSavedResponse(itineraryRepository.save(entity));
     }
@@ -117,9 +112,53 @@ public class ItineraryService {
     }
 
     @Transactional
+    public SavedItineraryResponse updateItinerary(UUID id, String userId, UpdateItineraryRequest request) {
+        if (!request.hasAnyField()) {
+            throw new RutaturException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Debe enviar al menos un campo para actualizar"
+            );
+        }
+
+        SavedItineraryEntity entity = findAndVerifyOwner(id, userId);
+
+        if (request.name() != null) {
+            entity.updateName(request.name());
+        }
+        if (request.startPoint() != null) {
+            entity.updateStartPoint(request.startPoint().latitude(), request.startPoint().longitude());
+        }
+        if (request.transportMode() != null) {
+            entity.updateTransportMode(request.transportMode());
+        }
+        if (request.totalDurationMinutes() != null) {
+            entity.updateTotalDurationMinutes(request.totalDurationMinutes());
+        }
+        if (request.stops() != null) {
+            entity.clearStops();
+            addStops(entity, request.stops());
+        }
+
+        return toSavedResponse(itineraryRepository.save(entity));
+    }
+
+    @Transactional
     public void deleteItinerary(UUID id, String userId) {
         SavedItineraryEntity entity = findAndVerifyOwner(id, userId);
         itineraryRepository.delete(entity);
+    }
+
+    private void addStops(
+            SavedItineraryEntity entity,
+            List<SaveItineraryRequest.SaveItineraryStopRequest> stops
+    ) {
+        stops.forEach(stop -> entity.addStop(new ItineraryPoiEntity(
+                stop.poiId(),
+                stop.visitOrder(),
+                stop.stayDurationMinutes(),
+                stop.travelTimeToNextMinutes(),
+                stop.distanceToNextMeters()
+        )));
     }
 
     @Transactional(readOnly = true)

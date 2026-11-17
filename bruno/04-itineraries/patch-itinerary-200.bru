@@ -1,0 +1,32 @@
+meta {
+  name: Turista 1 actualiza parcialmente su itinerario (200)
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/api/itineraries/{{itineraryId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{tokenTurista1}}
+}
+
+body:json {
+  {
+    "name": "Tarde cultural actualizada por Córdoba"
+  }
+}
+
+tests {
+  test("Status 200 y actualiza solo el campo enviado conservando el resto", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().id).to.equal(bru.getEnvVar("itineraryId"));
+    expect(res.getBody().name).to.equal("Tarde cultural actualizada por Córdoba");
+    expect(res.getBody().transportMode).to.equal("WALKING");
+    expect(res.getBody().totalDurationMinutes).to.equal(95);
+    expect(res.getBody().stops).to.be.an("array").with.lengthOf(2);
+  });
+}
