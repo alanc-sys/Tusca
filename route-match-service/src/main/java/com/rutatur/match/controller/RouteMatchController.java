@@ -1,11 +1,16 @@
 package com.rutatur.match.controller;
 
+import com.rutatur.common.dto.MatchRatingResponse;
+import com.rutatur.common.dto.RateMatchRequest;
+import com.rutatur.common.exception.ErrorCode;
+import com.rutatur.common.exception.RutaturException;
 import com.rutatur.match.dto.MatchContactResponse;
 import com.rutatur.match.dto.MatchRequestDto;
 import com.rutatur.match.dto.MatchSuggestionResponse;
 import com.rutatur.match.dto.RouteMatchResponse;
 import com.rutatur.match.dto.ShareRouteRequest;
 import com.rutatur.match.dto.SharedRouteResponse;
+import com.rutatur.match.service.MatchRatingService;
 import com.rutatur.match.service.RouteMatchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,9 +37,11 @@ import java.util.UUID;
 public class RouteMatchController {
 
     private final RouteMatchService routeMatchService;
+    private final MatchRatingService matchRatingService;
 
-    public RouteMatchController(RouteMatchService routeMatchService) {
+    public RouteMatchController(RouteMatchService routeMatchService, MatchRatingService matchRatingService) {
         this.routeMatchService = routeMatchService;
+        this.matchRatingService = matchRatingService;
     }
 
     @PostMapping("/share")
@@ -96,6 +103,24 @@ public class RouteMatchController {
     @Operation(summary = "Acepta una solicitud de match pendiente (transición PENDING -> ACCEPTED)")
     public RouteMatchResponse acceptMatch(@PathVariable UUID matchId, @AuthenticationPrincipal Jwt jwt) {
         return routeMatchService.acceptMatch(matchId, jwt.getSubject());
+    }
+
+    @PostMapping("/matches/{matchId}/rate")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Califica a la contraparte de un match aceptado (RN-14 a RN-16)")
+    public MatchRatingResponse rateMatch(
+            @PathVariable UUID matchId,
+            @Valid @RequestBody RateMatchRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return matchRatingService.rate(matchId, parseUserId(jwt), request);
+    }
+
+    private static UUID parseUserId(Jwt jwt) {
+        try {
+            return UUID.fromString(jwt.getSubject());
+        } catch (IllegalArgumentException ex) {
+            throw new RutaturException(ErrorCode.VALIDATION_ERROR, "El subject del token no es un UUID válido");
+        }
     }
 
     @PostMapping("/matches/{matchId}/reject")
