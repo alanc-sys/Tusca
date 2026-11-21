@@ -22,4 +22,7 @@ public interface MatchRatingRepository extends JpaRepository<MatchRatingEntity, 
 
     @Query("SELECT r FROM MatchRatingEntity r WHERE r.rated.id = :ratedUserId")
     List<MatchRatingEntity> findAllByRatedUserId(@Param("ratedUserId") UUID ratedUserId);
+
+    @Query("SELECT COALESCE(AVG(r.score), 0) FROM MatchRatingEntity r")
+    double averageScore();
 }
