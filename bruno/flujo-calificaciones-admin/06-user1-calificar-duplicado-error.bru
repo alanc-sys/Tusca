@@ -1,0 +1,29 @@
+meta {
+  name: W5-06 User1 reintenta calificar el mismo match (409)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/rate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "score": 2,
+    "comment": "Intento duplicado"
+  }
+}
+
+tests {
+  test("W5-06 - Status 409 y RATING_ALREADY_EXISTS (RN-15)", function() {
+    expect(res.getStatus()).to.equal(409);
+    expect(res.getBody().code).to.equal("RATING_ALREADY_EXISTS");
+  });
+}

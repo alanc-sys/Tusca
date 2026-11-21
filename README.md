@@ -81,6 +81,30 @@ cd bruno
 npx @usebruno/cli run -r --env local
 ```
 
+### Flujo E2E de calificaciones y administración
+
+La carpeta [`bruno/flujo-calificaciones-admin/`](bruno/flujo-calificaciones-admin/) agrega 10 peticiones secuenciales que autentican con el header `X-Demo-User` (sin bearer token). Requiere la plataforma levantada con el gateway en perfil `demo` —valor por defecto en `api-gateway/compose.yml`— y el entorno `local`:
+
+```bash
+cd bruno
+npx @usebruno/cli run flujo-calificaciones-admin -r --env local
+```
+
+Los bloques `script:pre-request` ejecutan las llamadas auxiliares (generar + guardar itinerarios, consultar sugerencias y aceptar el match) y los `script:post-response` encadenan `itineraryId`, `itineraryId2`, `sharedRoute1Id`/`sharedRoute2Id` (alias `sharedRouteId`), `matchId` y `user2Id`. Cada `.bru` incluye asserts `tests { ... }` de status y campos clave.
+
+| Paso | Petición principal | Resultado esperado |
+| --- | --- | --- |
+| `01-user1-generar-guardar-compartir` | `POST /api/routes/share` como `user1` | `201`, ruta activa |
+| `02-user2-generar-guardar-compartir` | `POST /api/routes/share` como `user2` | `201`, captura `user2Id` |
+| `03-user2-sugerencias-y-solicitar-match` | `POST /api/routes/matches/request` como `user2` | `201`, estado `PENDING` |
+| `04-user1-aceptar-match-y-ver-contacto` | `GET /api/routes/matches/{matchId}/contact` como `user1` | `200`, contacto de `user2` |
+| `05-user1-calificar-match-ok` | `POST /api/routes/matches/{matchId}/rate` (`score: 2`) | `201` |
+| `06-user1-calificar-duplicado-error` | ídem | `409`, `RATING_ALREADY_EXISTS` |
+| `07-admin-informe-calificaciones` | `GET /api/admin/ratings/report` como `admin1` | `200`, `user2` en el informe |
+| `08-admin-bloquear-usuario` | `POST /api/admin/users/{user2Id}/block` como `admin1` | `200`, `BLOCKED` |
+| `09-user2-accion-bloqueada-error` | `POST /api/routes/share` como `user2` | `403`, `USER_BLOCKED` |
+| `10-admin-desbloquear-usuario` | `POST /api/admin/users/{user2Id}/unblock` como `admin1` | `200`, `ACTIVE` |
+
 Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 
 | Usuario | Rol | Uso en pruebas |
@@ -171,6 +195,7 @@ curl -i -X POST http://localhost:8080/api/admin/users/{userId}/block -H "X-Demo-
   - Instalación en `.m2`: `mvn -pl rutatur-common install`
 - [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)
 - [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` + `03-pois` + `04-itineraries` + `05-route-match` con assertions)
+- [x] `bruno/flujo-calificaciones-admin/` (flujo E2E de calificaciones, informe, bloqueo y desbloqueo con `X-Demo-User`)
 - [x] `poi-service` (Overpass API, caché geográfico por área, fallback resiliente, `/internal/pois/search`)
 - [x] `itinerary-service` (colaboración con `poi-service`, OSRM + fallback Haversine, CRUD protegido por JWT)
 - [x] `route-match-service` (publicación opt-in, similitud Jaccard + Haversine, patrón State, consentimiento bilateral)

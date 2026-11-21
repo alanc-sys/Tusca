@@ -1,0 +1,28 @@
+meta {
+  name: W5-09 User2 bloqueado intenta compartir ruta (403)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+body:json {
+  {
+    "itineraryId": "{{itineraryId2}}"
+  }
+}
+
+tests {
+  test("W5-09 - Status 403 y USER_BLOCKED (RN-17)", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().code).to.equal("USER_BLOCKED");
+  });
+}

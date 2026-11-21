@@ -1,0 +1,61 @@
+meta {
+  name: W5-03 User2 consulta sugerencias y solicita match (201)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/request
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+body:json {
+  {
+    "myRouteId": "{{sharedRoute2Id}}",
+    "targetRouteId": "{{sharedRoute1Id}}"
+  }
+}
+
+script:pre-request {
+  const base = bru.getEnvVar("baseUrl");
+  const sharedRoute2Id = bru.getEnvVar("sharedRoute2Id");
+  const sharedRoute1Id = bru.getEnvVar("sharedRoute1Id");
+
+  // 1) Sugerencias como user2: debe aparecer la ruta compartida por user1.
+  const suggestions = await bru.sendRequest({
+    method: "GET",
+    url: base + "/api/routes/matches/suggestions?routeId=" + sharedRoute2Id,
+    headers: { "X-Demo-User": "user2" }
+  });
+  if (suggestions.status !== 200) {
+    throw new Error("W5-03: GET /matches/suggestions devolvió " + suggestions.status);
+  }
+  const found = (suggestions.data || []).some(item => item.targetRouteId === sharedRoute1Id);
+  if (!found) {
+    throw new Error("W5-03: user2 no recibió sugerencia de la ruta " + sharedRoute1Id);
+  }
+
+  // 2) El POST /request se ejecuta como petición principal de este .bru.
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("matchId", res.getBody().id);
+  }
+}
+
+tests {
+  test("W5-03 - Status 201, match PENDING y solicitado por user2", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().status).to.equal("PENDING");
+    expect(res.getBody().consentA).to.equal(true);
+    expect(res.getBody().consentB).to.equal(false);
+    expect(res.getBody().requesterUserId).to.equal(bru.getEnvVar("user2Id"));
+    expect(res.getBody().id).to.equal(bru.getEnvVar("matchId"));
+  });
+}
