@@ -32,7 +32,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 - **Orquestación desacoplada:** El [docker-compose.yml](docker-compose.yml) raíz solo orquesta mediante `include:`. Cada componente de infraestructura y cada microservicio es dueño de su propio `Dockerfile` y `compose.yml`.
 - **Database-per-Service lógico:** Una única instancia de PostgreSQL 15 inicializa bases y credenciales exclusivas (`keycloak_db`, `poi_db`, `itinerary_db`, `match_db`). Ver [ADR-001](docs/decisions/ADR-001-database-per-service.md).
-- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, el cliente `rutatur-client` y usuarios iniciales de prueba.
+- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, los clientes `rutatur-client` y `rutatur-api` (este último para el flujo `password` del modo demo), los usuarios iniciales de prueba y los usuarios demo `user1`, `user2` y `admin1`.
 
 ---
 
@@ -88,6 +88,71 @@ Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 | `turista1` | `ROLE_USER` | Generación/guardado de itinerarios y solicitud de match |
 | `turista2` | `ROLE_USER` | Contraparte para sugerencias, aceptación/rechazo y revelación de contacto |
 | `admin` | `ROLE_ADMIN` | Endpoints administrativos (`/api/admin/routes`, `/api/admin/metrics`, `/api/pois/sync`) |
+| `user1`, `user2` | `ROLE_USER` | Modo demo: calificaciones y bloqueo (contraseña `password`) |
+| `admin1` | `ROLE_ADMIN` | Modo demo: informe y bloqueo (contraseña `password`) |
+
+---
+
+## Calificaciones post-match y administración
+
+Una vez que un match está `ACCEPTED`, cualquiera de los dos participantes puede calificar a su contraparte una sola vez:
+
+```bash
+POST /api/routes/matches/{matchId}/rate
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{ "score": 4, "comment": "Muy buena ruta" }
+```
+
+- `score` entero entre `1` y `5`, `comment` opcional de hasta 500 caracteres.
+- Devuelve `201 Created` con el detalle de la calificación. El perfil del calificado se actualiza de forma atómica con su nuevo `ratings_count` y `average_rating` (2 decimales, `HALF_UP`).
+- Errores: `409 MATCH_NOT_ACCEPTED`, `403 NOT_MATCH_PARTICIPANT`, `409 RATING_ALREADY_EXISTS`.
+
+El perfil local de cada usuario (`user_profile`) se crea/actualiza automáticamente al primer request autenticado contra `route-match-service` usando los claims del JWT (sincronización JIT).
+
+Consola administrativa (`ROLE_ADMIN`):
+
+| Endpoint | Descripción |
+| --- | --- |
+| `GET /api/admin/ratings/report` | Promedio global, total de calificaciones, usuarios bloqueados y ranking por reputación. Marca `recommendedForBlock` cuando `ratingsCount >= 2` y `averageRating < 2.5`. |
+| `POST /api/admin/users/{userId}/block` | Bloquea al usuario (`403 USER_BLOCKED` al compartir rutas o gestionar matches). |
+| `POST /api/admin/users/{userId}/unblock` | Restaura el estado `ACTIVE`. |
+
+`/api/admin/routes` y `/api/admin/metrics` siguen siendo servidos por el gateway; `/api/admin/ratings/**` y `/api/admin/users/**` se enrutan a `route-match-service`.
+
+---
+
+## Modo demo multi-usuario (`X-Demo-User`)
+
+El gateway se levanta con el perfil `demo` por defecto (configurable con `SPRING_PROFILES_ACTIVE`). En ese modo podés cambiar de usuario sin pegar el token a mano: omití `Authorization` y enviá el header `X-Demo-User`:
+
+```bash
+curl -i http://localhost:8080/api/routes \
+  -H "X-Demo-User: user2"
+```
+
+Usuarios disponibles: `user1`, `user2` y `admin1` (todos con contraseña `password` en Keycloak). El filtro `DemoUserAuthWebFilter`:
+
+1. Pide un JWT real a Keycloak con `grant_type=password`, `client_id=rutatur-api`, `username=<X-Demo-User>` y `password=password`.
+2. Lo guarda en memoria caché por usuario hasta **30 segundos antes de su expiración**.
+3. Inyecta `Authorization: Bearer <jwt>` en el request antes de la cadena de seguridad.
+
+Si ya envías `Authorization`, el filtro no interviene. El header `X-Demo-User` también aparece como parámetro opcional en Swagger UI (`/swagger-ui.html`) para todas las operaciones.
+
+Ejemplo de flujo completo para probar calificaciones y bloqueo:
+
+```bash
+# 1. Compartir ruta y aceptar un match como user1 / user2 (con X-Demo-User)
+# 2. Calificar la contraparte
+curl -i -X POST http://localhost:8080/api/routes/matches/{matchId}/rate \
+  -H "X-Demo-User: user1" -H "Content-Type: application/json" \
+  -d '{"score": 2, "comment": "Poco coincide"}'
+
+# 3. Ver el informe y bloquear al usuario mal calificado como admin1
+curl -i http://localhost:8080/api/admin/ratings/report -H "X-Demo-User: admin1"
+curl -i -X POST http://localhost:8080/api/admin/users/{userId}/block -H "X-Demo-User: admin1"
+```
 
 ---
 
@@ -109,3 +174,5 @@ Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 - [x] `poi-service` (Overpass API, caché geográfico por área, fallback resiliente, `/internal/pois/search`)
 - [x] `itinerary-service` (colaboración con `poi-service`, OSRM + fallback Haversine, CRUD protegido por JWT)
 - [x] `route-match-service` (publicación opt-in, similitud Jaccard + Haversine, patrón State, consentimiento bilateral)
+- [x] Calificaciones post-match, reputación, informe administrativo y bloqueo (`user_profile`, `match_rating`, RN-13 a RN-18)
+- [x] Modo demo multi-usuario en `api-gateway` (`X-Demo-User` + caché de JWT) y documentación Swagger/README

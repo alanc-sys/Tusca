@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -17,6 +18,9 @@ class GatewaySecurityTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    @LocalServerPort
+    private int port;
 
     @MockBean
     private ReactiveJwtDecoder reactiveJwtDecoder;
@@ -77,7 +81,7 @@ class GatewaySecurityTest {
     @Test
     void corsPreflightFromFrontendOriginIsAllowedWithoutAuth() {
         webTestClient.options()
-                .uri("/api/itineraries")
+                .uri("http://localhost:" + port + "/api/itineraries")
                 .header("Origin", "http://localhost:5173")
                 .header("Access-Control-Request-Method", "GET")
                 .header("Access-Control-Request-Headers", "Authorization")
@@ -89,7 +93,7 @@ class GatewaySecurityTest {
     @Test
     void corsHeaderIsIncludedOnPublicEndpointForAllowedOrigin() {
         webTestClient.get()
-                .uri("/actuator/health")
+                .uri("http://localhost:" + port + "/actuator/health")
                 .header("Origin", "http://localhost:5173")
                 .exchange()
                 .expectStatus().isOk()
