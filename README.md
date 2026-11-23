@@ -105,6 +105,27 @@ Los bloques `script:pre-request` ejecutan las llamadas auxiliares (generar + gua
 | `09-user2-accion-bloqueada-error` | `POST /api/routes/share` como `user2` | `403`, `USER_BLOCKED` |
 | `10-admin-desbloquear-usuario` | `POST /api/admin/users/{user2Id}/unblock` como `admin1` | `200`, `ACTIVE` |
 
+### Carpeta de exposición en vivo (`presentacion-demo/`)
+
+[`bruno/presentacion-demo/`](bruno/presentacion-demo/) contiene 25 peticiones atómicas: un único request visible por archivo `.bru`, `auth: none`, header `X-Demo-User` y asserts en `tests { ... }`. Cada caso tiene variables propias (`p1*`, `p2*`, `p3*`) en [`bruno/environments/local.bru`](bruno/environments/local.bru), por lo que se pueden ejecutar en cualquier orden sin mezclar IDs.
+
+| Subcarpeta | Pasos | Qué muestra |
+| --- | --- | --- |
+| [`01-caso-exitoso/`](bruno/presentacion-demo/01-caso-exitoso/) | 12 | Generar, guardar y compartir rutas compatibles (`node-demo1-*`); sugerencias, match aceptado, contacto y calificaciones `5` de ambos usuarios. |
+| [`02-caso-rechazo/`](bruno/presentacion-demo/02-caso-rechazo/) | 8 | Match rechazado con IDs distintos (`node-demo2-*`, variables `p2*`): contacto `403` y calificación `409 MATCH_NOT_ACCEPTED`. |
+| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 5 | Prepara el match y una calificación baja (`1`) en `script:pre-request`, muestra el informe admin, bloquea a `user2` (`403 USER_BLOCKED`) y lo reactiva al final. |
+
+Ejecución por caso:
+
+```bash
+cd bruno
+npx @usebruno/cli run presentacion-demo/01-caso-exitoso -r --env local
+npx @usebruno/cli run presentacion-demo/02-caso-rechazo -r --env local
+npx @usebruno/cli run presentacion-demo/03-caso-admin -r --env local
+```
+
+El caso 3 captura `p3MatchId` y `p3User2Id` desde el match aceptado y termina con `user2` en estado `ACTIVE`, dejando el entorno listo para otra demo.
+
 Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 
 | Usuario | Rol | Uso en pruebas |
@@ -196,6 +217,7 @@ curl -i -X POST http://localhost:8080/api/admin/users/{userId}/block -H "X-Demo-
 - [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)
 - [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` + `03-pois` + `04-itineraries` + `05-route-match` con assertions)
 - [x] `bruno/flujo-calificaciones-admin/` (flujo E2E de calificaciones, informe, bloqueo y desbloqueo con `X-Demo-User`)
+- [x] `bruno/presentacion-demo/` (casos atómicos de éxito, rechazo y administración para la exposición en vivo)
 - [x] `poi-service` (Overpass API, caché geográfico por área, fallback resiliente, `/internal/pois/search`)
 - [x] `itinerary-service` (colaboración con `poi-service`, OSRM + fallback Haversine, CRUD protegido por JWT)
 - [x] `route-match-service` (publicación opt-in, similitud Jaccard + Haversine, patrón State, consentimiento bilateral)

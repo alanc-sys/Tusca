@@ -1,0 +1,36 @@
+meta {
+  name: W6-P1-04 User2 genera itinerario (200)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/itinerary/generate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+body:json {
+  {
+    "startPoint": { "latitude": -31.4170, "longitude": -64.1830 },
+    "availableTimeMinutes": 180,
+    "radiusMeters": 2000,
+    "transportMode": "WALKING",
+    "categories": ["park", "museum", "cafe"]
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("p1LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P1-04 - Generación pública de itinerario para user2", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.be.an("object");
+  });
+}

@@ -1,0 +1,157 @@
+meta {
+  name: W6-P3-01 Match aceptado y calificación baja de user1 (201)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{p3MatchId}}/rate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "score": 1,
+    "comment": "Mala coincidencia de ruta"
+  }
+}
+
+script:pre-request {
+  const base = bru.getEnvVar("baseUrl");
+  const headers = user => ({ "Content-Type": "application/json", "X-Demo-User": user });
+  const h1 = headers("user1");
+  const h2 = headers("user2");
+  const generateBody = {
+    startPoint: { latitude: -31.4190, longitude: -64.1850 },
+    availableTimeMinutes: 180,
+    radiusMeters: 2000,
+    transportMode: "WALKING",
+    categories: ["park", "museum", "cafe"]
+  };
+  const itineraryBody = name => ({
+    name: name,
+    startPoint: { latitude: -31.4190, longitude: -64.1850 },
+    transportMode: "WALKING",
+    totalDurationMinutes: 90,
+    stops: [
+      { poiId: "node-demo3-1", visitOrder: 1, stayDurationMinutes: 30, travelTimeToNextMinutes: 5, distanceToNextMeters: 250 },
+      { poiId: "node-demo3-2", visitOrder: 2, stayDurationMinutes: 60, travelTimeToNextMinutes: 0, distanceToNextMeters: 0 }
+    ]
+  });
+
+  const generated1 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itinerary/generate",
+    headers: h1,
+    data: generateBody
+  });
+  if (generated1.status !== 200) {
+    throw new Error("W6-P3-01: /api/itinerary/generate (user1) devolvió " + generated1.status);
+  }
+
+  const saved1 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itineraries",
+    headers: h1,
+    data: itineraryBody("Demo P3 - Ruta de user1")
+  });
+  if (saved1.status !== 201) {
+    throw new Error("W6-P3-01: POST /api/itineraries (user1) devolvió " + saved1.status);
+  }
+  bru.setEnvVar("p3Itin1", saved1.data.id);
+
+  const share1 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/routes/share",
+    headers: h1,
+    data: { itineraryId: bru.getEnvVar("p3Itin1") }
+  });
+  if (share1.status !== 201) {
+    throw new Error("W6-P3-01: POST /api/routes/share (user1) devolvió " + share1.status);
+  }
+  bru.setEnvVar("p3Share1", share1.data.id);
+
+  const generated2 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itinerary/generate",
+    headers: h2,
+    data: generateBody
+  });
+  if (generated2.status !== 200) {
+    throw new Error("W6-P3-01: /api/itinerary/generate (user2) devolvió " + generated2.status);
+  }
+
+  const saved2 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itineraries",
+    headers: h2,
+    data: itineraryBody("Demo P3 - Ruta de user2")
+  });
+  if (saved2.status !== 201) {
+    throw new Error("W6-P3-01: POST /api/itineraries (user2) devolvió " + saved2.status);
+  }
+  bru.setEnvVar("p3Itin2", saved2.data.id);
+
+  const share2 = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/routes/share",
+    headers: h2,
+    data: { itineraryId: bru.getEnvVar("p3Itin2") }
+  });
+  if (share2.status !== 201) {
+    throw new Error("W6-P3-01: POST /api/routes/share (user2) devolvió " + share2.status);
+  }
+  bru.setEnvVar("p3Share2", share2.data.id);
+
+  const requested = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/routes/matches/request",
+    headers: h2,
+    data: {
+      myRouteId: bru.getEnvVar("p3Share2"),
+      targetRouteId: bru.getEnvVar("p3Share1")
+    }
+  });
+  if (requested.status !== 201) {
+    throw new Error("W6-P3-01: POST /api/routes/matches/request devolvió " + requested.status);
+  }
+  bru.setEnvVar("p3MatchId", requested.data.id);
+
+  const accepted = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/routes/matches/" + bru.getEnvVar("p3MatchId") + "/accept",
+    headers: h1
+  });
+  if (accepted.status !== 200 || accepted.data.status !== "ACCEPTED") {
+    throw new Error("W6-P3-01: accept devolvió " + accepted.status);
+  }
+
+  const contact = await bru.sendRequest({
+    method: "GET",
+    url: base + "/api/routes/matches/" + bru.getEnvVar("p3MatchId") + "/contact",
+    headers: h1
+  });
+  if (contact.status !== 200) {
+    throw new Error("W6-P3-01: contact devolvió " + contact.status);
+  }
+  bru.setEnvVar("p3User2Id", contact.data.counterpartyUserId);
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-01 - Status 201 y calificación baja registrada", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().matchId).to.equal(bru.getEnvVar("p3MatchId"));
+    expect(res.getBody().score).to.equal(1);
+    expect(res.getBody().raterUserId).to.be.a("string");
+    expect(res.getBody().ratedUserId).to.equal(bru.getEnvVar("p3User2Id"));
+  });
+}

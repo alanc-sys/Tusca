@@ -1,0 +1,41 @@
+meta {
+  name: W6-P3-02 Admin ve usuarios y promedio actualizado (200)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/ratings/report
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-02 - Status 200, lista de usuarios y promedio actualizado", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body).to.be.an("object");
+    expect(JSON.stringify(body)).to.include("user2");
+
+    const users = body.users || body.userRatings || body.ranking || body.reputationRanking || [];
+    expect(users, "el informe debe incluir usuarios").to.be.an("array");
+    const user2 = users.find(item =>
+      (item.username || item.userName) === "user2" || item.userId === bru.getEnvVar("p3User2Id")
+    );
+    expect(user2, "user2 debe aparecer en el informe").to.exist;
+
+    const count = user2.ratingsCount ?? user2.ratings_count ?? 0;
+    const average = user2.averageRating ?? user2.average_rating ?? user2.avgRating;
+    expect(Number(count), "user2 debe tener al menos una calificación").to.be.at.least(1);
+    expect(Number.isFinite(Number(average))).to.equal(true);
+    expect(Number(average)).to.be.within(1, 5);
+  });
+}

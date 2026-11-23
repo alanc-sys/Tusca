@@ -1,0 +1,29 @@
+meta {
+  name: W6-P3-03 Admin bloquea a user2 (200)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{p3User2Id}}/block
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-03 - Status 200 y usuario BLOCKED", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("BLOCKED");
+    if (res.getBody().userId) {
+      expect(res.getBody().userId).to.equal(bru.getEnvVar("p3User2Id"));
+    }
+  });
+}
