@@ -157,6 +157,24 @@
       ]
     },
     {
+      "username": "user3",
+      "email": "user3@rutatur.com",
+      "firstName": "Demo",
+      "lastName": "User Three",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
       "username": "admin1",
       "email": "admin1@rutatur.com",
       "firstName": "Demo",

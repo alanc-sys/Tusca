@@ -19,6 +19,7 @@ import java.util.UUID;
 public class UserProfileEntity {
 
     @Id
+    @Column(name = "user_id")
     private UUID id;
 
     @Column(name = "username", nullable = false, length = 100)
@@ -26,6 +27,9 @@ public class UserProfileEntity {
 
     @Column(name = "email", length = 255)
     private String email;
+
+    @Column(name = "is_admin", nullable = false, columnDefinition = "boolean default false")
+    private boolean admin = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -90,6 +94,14 @@ public class UserProfileEntity {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public boolean isAdmin() {
+        return admin;
+    }
+
+    public void setAdmin(boolean admin) {
+        this.admin = admin;
     }
 
     public UserProfileStatus getStatus() {

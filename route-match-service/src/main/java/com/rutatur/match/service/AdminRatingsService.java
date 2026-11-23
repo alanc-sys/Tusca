@@ -36,7 +36,9 @@ public class AdminRatingsService {
 
     @Transactional(readOnly = true)
     public AdminRatingsReportResponse report() {
-        List<UserProfileEntity> profiles = userProfileRepository.findAll();
+        List<UserProfileEntity> profiles = userProfileRepository.findAll().stream()
+                .filter(profile -> !profile.isAdmin())
+                .toList();
 
         List<UserRatingSummary> users = profiles.stream()
                 // Primero quienes tienen calificaciones; dentro de cada grupo, peor promedio primero.

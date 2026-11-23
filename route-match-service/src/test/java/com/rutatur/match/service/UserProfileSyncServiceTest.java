@@ -10,6 +10,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,6 +47,25 @@ class UserProfileSyncServiceTest {
         assertEquals("user1@rutatur.com", saved.getEmail());
         assertEquals(UserProfileStatus.ACTIVE, saved.getStatus());
         assertEquals(0, saved.getRatingsCount());
+        assertEquals(false, saved.isAdmin());
+    }
+
+    @Test
+    void marksProfileAsAdminWhenJwtHasAdminRole() {
+        UUID userId = UUID.randomUUID();
+        when(userProfileRepository.findById(userId)).thenReturn(Optional.empty());
+        Jwt adminJwt = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .claim("sub", userId.toString())
+                .claim("preferred_username", "admin1")
+                .claim("realm_access", Map.of("roles", List.of("ROLE_USER", "ROLE_ADMIN")))
+                .build();
+
+        service().sync(adminJwt);
+
+        ArgumentCaptor<UserProfileEntity> captor = ArgumentCaptor.forClass(UserProfileEntity.class);
+        verify(userProfileRepository).save(captor.capture());
+        assertEquals(true, captor.getValue().isAdmin());
     }
 
     @Test
@@ -53,6 +74,7 @@ class UserProfileSyncServiceTest {
         UserProfileEntity existing = new UserProfileEntity(userId, "old", "old@rutatur.com");
         existing.setStatus(UserProfileStatus.BLOCKED);
         existing.setRatingsCount(7);
+        existing.setAdmin(true);
         when(userProfileRepository.findById(userId)).thenReturn(Optional.of(existing));
 
         service().sync(jwt(userId.toString(), "user1", "user1@rutatur.com"));
@@ -61,6 +83,7 @@ class UserProfileSyncServiceTest {
         assertEquals("user1@rutatur.com", existing.getEmail());
         assertEquals(UserProfileStatus.BLOCKED, existing.getStatus());
         assertEquals(7, existing.getRatingsCount());
+        assertEquals(false, existing.isAdmin());
         verify(userProfileRepository, never()).save(any());
     }
 

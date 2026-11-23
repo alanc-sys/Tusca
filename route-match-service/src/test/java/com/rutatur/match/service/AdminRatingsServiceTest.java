@@ -43,9 +43,11 @@ class AdminRatingsServiceTest {
         UserProfileEntity goodRated = profile("good", 3, "4.50", UserProfileStatus.ACTIVE);
         UserProfileEntity blockedNoRatings = profile("aaa-blocked", 0, "0.00", UserProfileStatus.BLOCKED);
         UserProfileEntity activeNoRatings = profile("zzz-active", 0, "0.00", UserProfileStatus.ACTIVE);
+        UserProfileEntity admin = profile("admin1", 0, "0.00", UserProfileStatus.BLOCKED);
+        admin.setAdmin(true);
 
         when(userProfileRepository.findAll()).thenReturn(List.of(
-                goodRated, activeNoRatings, badRated, blockedNoRatings, lowOneVote));
+                goodRated, activeNoRatings, badRated, blockedNoRatings, lowOneVote, admin));
         when(matchRatingRepository.averageScore()).thenReturn(2.75);
         when(matchRatingRepository.count()).thenReturn(6L);
 

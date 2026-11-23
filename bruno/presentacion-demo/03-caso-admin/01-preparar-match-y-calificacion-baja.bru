@@ -25,7 +25,7 @@ script:pre-request {
   const base = bru.getEnvVar("baseUrl");
   const headers = user => ({ "Content-Type": "application/json", "X-Demo-User": user });
   const h1 = headers("user1");
-  const h2 = headers("user2");
+  const h2 = headers("user3");
   const generateBody = {
     startPoint: { latitude: -31.4190, longitude: -64.1850 },
     availableTimeMinutes: 180,
@@ -83,17 +83,17 @@ script:pre-request {
     data: generateBody
   });
   if (generated2.status !== 200) {
-    throw new Error("W6-P3-01: /api/itinerary/generate (user2) devolvió " + generated2.status);
+    throw new Error("W6-P3-01: /api/itinerary/generate (user3) devolvió " + generated2.status);
   }
 
   const saved2 = await bru.sendRequest({
     method: "POST",
     url: base + "/api/itineraries",
     headers: h2,
-    data: itineraryBody("Demo P3 - Ruta de user2")
+    data: itineraryBody("Demo P3 - Ruta de user3")
   });
   if (saved2.status !== 201) {
-    throw new Error("W6-P3-01: POST /api/itineraries (user2) devolvió " + saved2.status);
+    throw new Error("W6-P3-01: POST /api/itineraries (user3) devolvió " + saved2.status);
   }
   bru.setEnvVar("p3Itin2", saved2.data.id);
 
@@ -104,7 +104,7 @@ script:pre-request {
     data: { itineraryId: bru.getEnvVar("p3Itin2") }
   });
   if (share2.status !== 201) {
-    throw new Error("W6-P3-01: POST /api/routes/share (user2) devolvió " + share2.status);
+    throw new Error("W6-P3-01: POST /api/routes/share (user3) devolvió " + share2.status);
   }
   bru.setEnvVar("p3Share2", share2.data.id);
 
@@ -139,7 +139,7 @@ script:pre-request {
   if (contact.status !== 200) {
     throw new Error("W6-P3-01: contact devolvió " + contact.status);
   }
-  bru.setEnvVar("p3User2Id", contact.data.counterpartyUserId);
+  bru.setEnvVar("p3TargetUserId", contact.data.counterpartyUserId);
 }
 
 script:post-response {
@@ -152,6 +152,6 @@ tests {
     expect(res.getBody().matchId).to.equal(bru.getEnvVar("p3MatchId"));
     expect(res.getBody().score).to.equal(1);
     expect(res.getBody().raterUserId).to.be.a("string");
-    expect(res.getBody().ratedUserId).to.equal(bru.getEnvVar("p3User2Id"));
+    expect(res.getBody().ratedUserId).to.equal(bru.getEnvVar("p3TargetUserId"));
   });
 }

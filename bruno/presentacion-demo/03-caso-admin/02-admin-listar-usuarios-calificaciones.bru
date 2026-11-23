@@ -19,23 +19,25 @@ script:post-response {
 }
 
 tests {
-  test("W6-P3-02 - Status 200, lista de usuarios y promedio actualizado", function() {
+  test("W6-P3-02 - Status 200, solo clientes y promedio actualizado", function() {
     expect(res.getStatus()).to.equal(200);
     const body = res.getBody();
     expect(body).to.be.an("object");
-    expect(JSON.stringify(body)).to.include("user2");
 
     const users = body.users || body.userRatings || body.ranking || body.reputationRanking || [];
     expect(users, "el informe debe incluir usuarios").to.be.an("array");
-    const user2 = users.find(item =>
-      (item.username || item.userName) === "user2" || item.userId === bru.getEnvVar("p3User2Id")
-    );
-    expect(user2, "user2 debe aparecer en el informe").to.exist;
+    expect(users.every(item => !/admin/i.test(item.username || item.userName || "")),
+      "el informe no debe mostrar administradores").to.equal(true);
 
-    const count = user2.ratingsCount ?? user2.ratings_count ?? 0;
-    const average = user2.averageRating ?? user2.average_rating ?? user2.avgRating;
-    expect(Number(count), "user2 debe tener al menos una calificación").to.be.at.least(1);
+    const target = users.find(item =>
+      (item.username || item.userName) === "user3" || item.userId === bru.getEnvVar("p3TargetUserId")
+    );
+    expect(target, "user3 debe aparecer en el informe").to.exist;
+
+    const count = target.ratingsCount ?? target.ratings_count ?? 0;
+    const average = target.averageRating ?? target.average_rating ?? target.avgRating;
+    expect(Number(count), "user3 debe tener al menos una calificación").to.be.at.least(1);
     expect(Number.isFinite(Number(average))).to.equal(true);
-    expect(Number(average)).to.be.within(1, 5);
+    expect(Number(average), "user3 debe tener menos de 2 estrellas de promedio").to.be.below(2);
   });
 }

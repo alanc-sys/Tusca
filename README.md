@@ -32,7 +32,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 - **Orquestación desacoplada:** El [docker-compose.yml](docker-compose.yml) raíz solo orquesta mediante `include:`. Cada componente de infraestructura y cada microservicio es dueño de su propio `Dockerfile` y `compose.yml`.
 - **Database-per-Service lógico:** Una única instancia de PostgreSQL 15 inicializa bases y credenciales exclusivas (`keycloak_db`, `poi_db`, `itinerary_db`, `match_db`). Ver [ADR-001](docs/decisions/ADR-001-database-per-service.md).
-- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, los clientes `rutatur-client` y `rutatur-api` (este último para el flujo `password` del modo demo), los usuarios iniciales de prueba y los usuarios demo `user1`, `user2` y `admin1`.
+- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, los clientes `rutatur-client` y `rutatur-api` (este último para el flujo `password` del modo demo), los usuarios iniciales de prueba y los usuarios demo `user1`, `user2`, `user3` y `admin1`.
 
 ---
 
@@ -113,7 +113,7 @@ Los bloques `script:pre-request` ejecutan las llamadas auxiliares (generar + gua
 | --- | --- | --- |
 | [`01-caso-exitoso/`](bruno/presentacion-demo/01-caso-exitoso/) | 12 | Generar, guardar y compartir rutas compatibles (`node-demo1-*`); sugerencias, match aceptado, contacto y calificaciones `5` de ambos usuarios. |
 | [`02-caso-rechazo/`](bruno/presentacion-demo/02-caso-rechazo/) | 8 | Match rechazado con IDs distintos (`node-demo2-*`, variables `p2*`): contacto `403` y calificación `409 MATCH_NOT_ACCEPTED`. |
-| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 5 | Prepara el match y una calificación baja (`1`) en `script:pre-request`, muestra el informe admin, bloquea a `user2` (`403 USER_BLOCKED`) y lo reactiva al final. |
+| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 5 | Prepara el match y una calificación baja (`1`) a `user3` en `script:pre-request`, muestra el informe solo de clientes, bloquea a ese mismo usuario (`403 USER_BLOCKED`) y lo reactiva al final. |
 
 Ejecución por caso:
 
@@ -124,7 +124,7 @@ npx @usebruno/cli run presentacion-demo/02-caso-rechazo -r --env local
 npx @usebruno/cli run presentacion-demo/03-caso-admin -r --env local
 ```
 
-El caso 3 captura `p3MatchId` y `p3User2Id` desde el match aceptado y termina con `user2` en estado `ACTIVE`, dejando el entorno listo para otra demo.
+El caso 3 captura `p3MatchId` y `p3TargetUserId` desde el match aceptado: la contraparte es `user3` (un cliente nuevo, sin las calificaciones `5` del caso exitoso), que queda con promedio `1.00`. El bloqueo y la reactivación usan ese mismo `p3TargetUserId` y terminan con `user3` en estado `ACTIVE`, dejando el entorno listo para otra demo. Para que `user3` exista hay que reimportar el realm (o recrear el volumen de Keycloak) y reiniciar `route-match-service` para que `ddl-auto=update` agregue la columna `is_admin` que excluye a los administradores del informe.
 
 Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 
@@ -133,7 +133,8 @@ Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 | `turista1` | `ROLE_USER` | Generación/guardado de itinerarios y solicitud de match |
 | `turista2` | `ROLE_USER` | Contraparte para sugerencias, aceptación/rechazo y revelación de contacto |
 | `admin` | `ROLE_ADMIN` | Endpoints administrativos (`/api/admin/routes`, `/api/admin/metrics`, `/api/pois/sync`) |
-| `user1`, `user2` | `ROLE_USER` | Modo demo: calificaciones y bloqueo (contraseña `password`) |
+| `user1`, `user2` | `ROLE_USER` | Modo demo: casos exitoso y rechazo (contraseña `password`) |
+| `user3` | `ROLE_USER` | Modo demo: cliente calificado con `1` estrella y bloqueado en el caso admin (contraseña `password`) |
 | `admin1` | `ROLE_ADMIN` | Modo demo: informe y bloqueo (contraseña `password`) |
 
 ---
@@ -160,7 +161,7 @@ Consola administrativa (`ROLE_ADMIN`):
 
 | Endpoint | Descripción |
 | --- | --- |
-| `GET /api/admin/ratings/report` | Promedio global, total de calificaciones, usuarios bloqueados y ranking por reputación. Marca `recommendedForBlock` cuando `ratingsCount >= 2` y `averageRating < 2.5`. |
+| `GET /api/admin/ratings/report` | Promedio global, total de calificaciones, usuarios bloqueados y ranking por reputación. Marca `recommendedForBlock` cuando `ratingsCount >= 2` y `averageRating < 2.5`. El listado incluye solo clientes: los perfiles con `ROLE_ADMIN` se omiten. |
 | `POST /api/admin/users/{userId}/block` | Bloquea al usuario (`403 USER_BLOCKED` al compartir rutas o gestionar matches). |
 | `POST /api/admin/users/{userId}/unblock` | Restaura el estado `ACTIVE`. |
 
@@ -177,7 +178,7 @@ curl -i http://localhost:8080/api/routes \
   -H "X-Demo-User: user2"
 ```
 
-Usuarios disponibles: `user1`, `user2` y `admin1` (todos con contraseña `password` en Keycloak). El filtro `DemoUserAuthWebFilter`:
+Usuarios disponibles: `user1`, `user2`, `user3` y `admin1` (todos con contraseña `password` en Keycloak). El filtro `DemoUserAuthWebFilter`:
 
 1. Pide un JWT real a Keycloak con `grant_type=password`, `client_id=rutatur-api`, `username=<X-Demo-User>` y `password=password`.
 2. Lo guarda en memoria caché por usuario hasta **30 segundos antes de su expiración**.

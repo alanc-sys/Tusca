@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
     user_id UUID PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
     email VARCHAR(255),
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'BLOCKED')),
     average_rating NUMERIC(3,2) NOT NULL DEFAULT 0.00,
     ratings_count INT NOT NULL DEFAULT 0,

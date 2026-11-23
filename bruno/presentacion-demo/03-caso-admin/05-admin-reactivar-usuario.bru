@@ -1,11 +1,11 @@
 meta {
-  name: W6-P3-05 Admin reactiva a user2 (200)
+  name: W6-P3-05 Admin reactiva a user3 (200)
   type: http
   seq: 5
 }
 
 post {
-  url: {{baseUrl}}/api/admin/users/{{p3User2Id}}/unblock
+  url: {{baseUrl}}/api/admin/users/{{p3TargetUserId}}/unblock
   body: none
   auth: none
 }
@@ -23,7 +23,7 @@ tests {
     expect(res.getStatus()).to.equal(200);
     expect(res.getBody().status).to.equal("ACTIVE");
     if (res.getBody().userId) {
-      expect(res.getBody().userId).to.equal(bru.getEnvVar("p3User2Id"));
+      expect(res.getBody().userId).to.equal(bru.getEnvVar("p3TargetUserId"));
     }
   });
 }
