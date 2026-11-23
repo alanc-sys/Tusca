@@ -107,13 +107,13 @@ Los bloques `script:pre-request` ejecutan las llamadas auxiliares (generar + gua
 
 ### Carpeta de exposición en vivo (`presentacion-demo/`)
 
-[`bruno/presentacion-demo/`](bruno/presentacion-demo/) contiene 25 peticiones atómicas: un único request visible por archivo `.bru`, `auth: none`, header `X-Demo-User` y asserts en `tests { ... }`. Cada caso tiene variables propias (`p1*`, `p2*`, `p3*`) en [`bruno/environments/local.bru`](bruno/environments/local.bru), por lo que se pueden ejecutar en cualquier orden sin mezclar IDs.
+[`bruno/presentacion-demo/`](bruno/presentacion-demo/) contiene 28 peticiones atómicas: un único request visible por archivo `.bru`, `auth: none`, header `X-Demo-User` y asserts en `tests { ... }`. Cada caso tiene variables propias (`p1*`, `p2*`, `p3*`) en [`bruno/environments/local.bru`](bruno/environments/local.bru), por lo que se pueden ejecutar en cualquier orden sin mezclar IDs.
 
 | Subcarpeta | Pasos | Qué muestra |
 | --- | --- | --- |
 | [`01-caso-exitoso/`](bruno/presentacion-demo/01-caso-exitoso/) | 12 | Generar, guardar y compartir rutas compatibles (`node-demo1-*`); sugerencias, match aceptado, contacto y calificaciones `5` de ambos usuarios. |
 | [`02-caso-rechazo/`](bruno/presentacion-demo/02-caso-rechazo/) | 8 | Match rechazado con IDs distintos (`node-demo2-*`, variables `p2*`): contacto `403` y calificación `409 MATCH_NOT_ACCEPTED`. |
-| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 5 | Prepara el match y una calificación baja (`1`) a `user3` en `script:pre-request`, muestra el informe solo de clientes, bloquea a ese mismo usuario (`403 USER_BLOCKED`) y lo reactiva al final. |
+| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 8 | Prepara el match y una calificación baja (`1`) a `user3`, muestra el informe solo de clientes, bloquea/reactiva a `user3`, verifica que `user1` no pueda ver el ranking (`403`), bloquea a `user2` y lo reactiva al final. |
 
 Ejecución por caso:
 
@@ -124,7 +124,7 @@ npx @usebruno/cli run presentacion-demo/02-caso-rechazo -r --env local
 npx @usebruno/cli run presentacion-demo/03-caso-admin -r --env local
 ```
 
-El caso 3 captura `p3MatchId` y `p3TargetUserId` desde el match aceptado: la contraparte es `user3` (un cliente nuevo, sin las calificaciones `5` del caso exitoso), que queda con promedio `1.00`. El bloqueo y la reactivación usan ese mismo `p3TargetUserId` y terminan con `user3` en estado `ACTIVE`, dejando el entorno listo para otra demo. Para que `user3` exista hay que reimportar el realm (o recrear el volumen de Keycloak) y reiniciar `route-match-service` para que `ddl-auto=update` agregue la columna `is_admin` que excluye a los administradores del informe.
+El caso 3 captura `p3MatchId` y `p3TargetUserId` desde el match aceptado: la contraparte es `user3` (un cliente nuevo, sin las calificaciones `5` del caso exitoso), que queda con promedio `1.00`. El bloqueo y la reactivación usan ese mismo `p3TargetUserId` y terminan con `user3` en estado `ACTIVE`. Después, `user1` recibe `403 FORBIDDEN` al consultar `/api/admin/ratings/report`, y los dos últimos pasos toman `p3User2Id` del informe para bloquear y reactivar a `user2` (por eso conviene correr antes el caso exitoso y por eso el entorno queda listo para otra demo). Para que `user3` exista hay que reimportar el realm (o recrear el volumen de Keycloak) y reiniciar `route-match-service` para que `ddl-auto=update` agregue la columna `is_admin` que excluye a los administradores del informe.
 
 Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 

@@ -1,0 +1,48 @@
+meta {
+  name: W6-P3-07 Admin bloquea a user2 (200)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{p3User2Id}}/block
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+script:pre-request {
+  const base = bru.getEnvVar("baseUrl");
+  const headers = { "Content-Type": "application/json", "X-Demo-User": "admin1" };
+
+  const report = await bru.sendRequest({
+    method: "GET",
+    url: base + "/api/admin/ratings/report",
+    headers: headers
+  });
+  if (report.status !== 200) {
+    throw new Error("W6-P3-07: informe admin devolvió " + report.status);
+  }
+
+  const user2 = (report.data.users || []).find(item => item.username === "user2");
+  if (!user2) {
+    throw new Error("W6-P3-07: user2 no aparece en el informe; ejecutá primero el caso exitoso");
+  }
+  bru.setEnvVar("p3User2Id", user2.userId);
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-07 - Status 200 y user2 BLOCKED", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().username).to.equal("user2");
+    expect(res.getBody().status).to.equal("BLOCKED");
+    expect(res.getBody().userId).to.equal(bru.getEnvVar("p3User2Id"));
+  });
+}

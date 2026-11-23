@@ -1,0 +1,26 @@
+meta {
+  name: W6-P3-06 User1 no puede ver el ranking de usuarios (403)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/admin/ratings/report
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-06 - Status 403 y FORBIDDEN para un usuario normal", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(JSON.stringify(res.getBody())).to.include("FORBIDDEN");
+  });
+}
