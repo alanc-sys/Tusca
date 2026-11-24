@@ -1,0 +1,27 @@
+meta {
+  name: W6-P2-07 User2 no ve contacto del match rechazado (403)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/{{p2MatchId}}/contact
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+script:post-response {
+  bru.setEnvVar("p2LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P2-07 - Status 403 y contacto denegado", function() {
+    expect(res.getStatus()).to.equal(403);
+    const raw = JSON.stringify(res.getBody());
+    expect(raw).to.match(/CONSENT_REQUIRED|MATCH_NOT_ACCEPTED|REJECTED/);
+  });
+}

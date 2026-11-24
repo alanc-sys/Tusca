@@ -1,0 +1,33 @@
+meta {
+  name: W6-P2-08 User2 no puede calificar match rechazado (409)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{p2MatchId}}/rate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+body:json {
+  {
+    "score": 3,
+    "comment": "Intento de calificación sobre match rechazado"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("p2LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P2-08 - Status 409 y MATCH_NOT_ACCEPTED", function() {
+    expect(res.getStatus()).to.equal(409);
+    expect(JSON.stringify(res.getBody())).to.include("MATCH_NOT_ACCEPTED");
+  });
+}

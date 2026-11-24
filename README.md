@@ -32,7 +32,7 @@ Solución backend basada en microservicios (Java 21 + Spring Boot) para la gener
 
 - **Orquestación desacoplada:** El [docker-compose.yml](docker-compose.yml) raíz solo orquesta mediante `include:`. Cada componente de infraestructura y cada microservicio es dueño de su propio `Dockerfile` y `compose.yml`.
 - **Database-per-Service lógico:** Una única instancia de PostgreSQL 15 inicializa bases y credenciales exclusivas (`keycloak_db`, `poi_db`, `itinerary_db`, `match_db`). Ver [ADR-001](docs/decisions/ADR-001-database-per-service.md).
-- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, el cliente `rutatur-client` y usuarios iniciales de prueba.
+- **Seguridad centralizada:** Keycloak 25 importa automáticamente el realm `rutatur` con los roles `ROLE_USER` y `ROLE_ADMIN`, los clientes `rutatur-client` y `rutatur-api` (este último para el flujo `password` del modo demo), los usuarios iniciales de prueba y los usuarios demo `user1`, `user2`, `user3` y `admin1`.
 
 ---
 
@@ -81,6 +81,51 @@ cd bruno
 npx @usebruno/cli run -r --env local
 ```
 
+### Flujo E2E de calificaciones y administración
+
+La carpeta [`bruno/flujo-calificaciones-admin/`](bruno/flujo-calificaciones-admin/) agrega 10 peticiones secuenciales que autentican con el header `X-Demo-User` (sin bearer token). Requiere la plataforma levantada con el gateway en perfil `demo` —valor por defecto en `api-gateway/compose.yml`— y el entorno `local`:
+
+```bash
+cd bruno
+npx @usebruno/cli run flujo-calificaciones-admin -r --env local
+```
+
+Los bloques `script:pre-request` ejecutan las llamadas auxiliares (generar + guardar itinerarios, consultar sugerencias y aceptar el match) y los `script:post-response` encadenan `itineraryId`, `itineraryId2`, `sharedRoute1Id`/`sharedRoute2Id` (alias `sharedRouteId`), `matchId` y `user2Id`. Cada `.bru` incluye asserts `tests { ... }` de status y campos clave.
+
+| Paso | Petición principal | Resultado esperado |
+| --- | --- | --- |
+| `01-user1-generar-guardar-compartir` | `POST /api/routes/share` como `user1` | `201`, ruta activa |
+| `02-user2-generar-guardar-compartir` | `POST /api/routes/share` como `user2` | `201`, captura `user2Id` |
+| `03-user2-sugerencias-y-solicitar-match` | `POST /api/routes/matches/request` como `user2` | `201`, estado `PENDING` |
+| `04-user1-aceptar-match-y-ver-contacto` | `GET /api/routes/matches/{matchId}/contact` como `user1` | `200`, contacto de `user2` |
+| `05-user1-calificar-match-ok` | `POST /api/routes/matches/{matchId}/rate` (`score: 2`) | `201` |
+| `06-user1-calificar-duplicado-error` | ídem | `409`, `RATING_ALREADY_EXISTS` |
+| `07-admin-informe-calificaciones` | `GET /api/admin/ratings/report` como `admin1` | `200`, `user2` en el informe |
+| `08-admin-bloquear-usuario` | `POST /api/admin/users/{user2Id}/block` como `admin1` | `200`, `BLOCKED` |
+| `09-user2-accion-bloqueada-error` | `POST /api/routes/share` como `user2` | `403`, `USER_BLOCKED` |
+| `10-admin-desbloquear-usuario` | `POST /api/admin/users/{user2Id}/unblock` como `admin1` | `200`, `ACTIVE` |
+
+### Carpeta de exposición en vivo (`presentacion-demo/`)
+
+[`bruno/presentacion-demo/`](bruno/presentacion-demo/) contiene 28 peticiones atómicas: un único request visible por archivo `.bru`, `auth: none`, header `X-Demo-User` y asserts en `tests { ... }`. Cada caso tiene variables propias (`p1*`, `p2*`, `p3*`) en [`bruno/environments/local.bru`](bruno/environments/local.bru), por lo que se pueden ejecutar en cualquier orden sin mezclar IDs.
+
+| Subcarpeta | Pasos | Qué muestra |
+| --- | --- | --- |
+| [`01-caso-exitoso/`](bruno/presentacion-demo/01-caso-exitoso/) | 12 | Generar, guardar y compartir rutas compatibles (`node-demo1-*`); sugerencias, match aceptado, contacto y calificaciones `5` de ambos usuarios. |
+| [`02-caso-rechazo/`](bruno/presentacion-demo/02-caso-rechazo/) | 8 | Match rechazado con IDs distintos (`node-demo2-*`, variables `p2*`): contacto `403` y calificación `409 MATCH_NOT_ACCEPTED`. |
+| [`03-caso-admin/`](bruno/presentacion-demo/03-caso-admin/) | 8 | Prepara el match y una calificación baja (`1`) a `user3`, muestra el informe solo de clientes, bloquea/reactiva a `user3`, verifica que `user1` no pueda ver el ranking (`403`), bloquea a `user2` y lo reactiva al final. |
+
+Ejecución por caso:
+
+```bash
+cd bruno
+npx @usebruno/cli run presentacion-demo/01-caso-exitoso -r --env local
+npx @usebruno/cli run presentacion-demo/02-caso-rechazo -r --env local
+npx @usebruno/cli run presentacion-demo/03-caso-admin -r --env local
+```
+
+El caso 3 captura `p3MatchId` y `p3TargetUserId` desde el match aceptado: la contraparte es `user3` (un cliente nuevo, sin las calificaciones `5` del caso exitoso), que queda con promedio `1.00`. El bloqueo y la reactivación usan ese mismo `p3TargetUserId` y terminan con `user3` en estado `ACTIVE`. Después, `user1` recibe `403 FORBIDDEN` al consultar `/api/admin/ratings/report`, y los dos últimos pasos toman `p3User2Id` del informe para bloquear y reactivar a `user2` (por eso conviene correr antes el caso exitoso y por eso el entorno queda listo para otra demo). Para que `user3` exista hay que reimportar el realm (o recrear el volumen de Keycloak) y reiniciar `route-match-service` para que `ddl-auto=update` agregue la columna `is_admin` que excluye a los administradores del informe.
+
 Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 
 | Usuario | Rol | Uso en pruebas |
@@ -88,6 +133,72 @@ Usuarios de prueba precargados en Keycloak (realm `rutatur`):
 | `turista1` | `ROLE_USER` | Generación/guardado de itinerarios y solicitud de match |
 | `turista2` | `ROLE_USER` | Contraparte para sugerencias, aceptación/rechazo y revelación de contacto |
 | `admin` | `ROLE_ADMIN` | Endpoints administrativos (`/api/admin/routes`, `/api/admin/metrics`, `/api/pois/sync`) |
+| `user1`, `user2` | `ROLE_USER` | Modo demo: casos exitoso y rechazo (contraseña `password`) |
+| `user3` | `ROLE_USER` | Modo demo: cliente calificado con `1` estrella y bloqueado en el caso admin (contraseña `password`) |
+| `admin1` | `ROLE_ADMIN` | Modo demo: informe y bloqueo (contraseña `password`) |
+
+---
+
+## Calificaciones post-match y administración
+
+Una vez que un match está `ACCEPTED`, cualquiera de los dos participantes puede calificar a su contraparte una sola vez:
+
+```bash
+POST /api/routes/matches/{matchId}/rate
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{ "score": 4, "comment": "Muy buena ruta" }
+```
+
+- `score` entero entre `1` y `5`, `comment` opcional de hasta 500 caracteres.
+- Devuelve `201 Created` con el detalle de la calificación. El perfil del calificado se actualiza de forma atómica con su nuevo `ratings_count` y `average_rating` (2 decimales, `HALF_UP`).
+- Errores: `409 MATCH_NOT_ACCEPTED`, `403 NOT_MATCH_PARTICIPANT`, `409 RATING_ALREADY_EXISTS`.
+
+El perfil local de cada usuario (`user_profile`) se crea/actualiza automáticamente al primer request autenticado contra `route-match-service` usando los claims del JWT (sincronización JIT).
+
+Consola administrativa (`ROLE_ADMIN`):
+
+| Endpoint | Descripción |
+| --- | --- |
+| `GET /api/admin/ratings/report` | Promedio global, total de calificaciones, usuarios bloqueados y ranking por reputación. Marca `recommendedForBlock` cuando `ratingsCount >= 2` y `averageRating < 2.5`. El listado incluye solo clientes: los perfiles con `ROLE_ADMIN` se omiten. |
+| `POST /api/admin/users/{userId}/block` | Bloquea al usuario (`403 USER_BLOCKED` al compartir rutas o gestionar matches). |
+| `POST /api/admin/users/{userId}/unblock` | Restaura el estado `ACTIVE`. |
+
+`/api/admin/routes` y `/api/admin/metrics` siguen siendo servidos por el gateway; `/api/admin/ratings/**` y `/api/admin/users/**` se enrutan a `route-match-service`.
+
+---
+
+## Modo demo multi-usuario (`X-Demo-User`)
+
+El gateway se levanta con el perfil `demo` por defecto (configurable con `SPRING_PROFILES_ACTIVE`). En ese modo podés cambiar de usuario sin pegar el token a mano: omití `Authorization` y enviá el header `X-Demo-User`:
+
+```bash
+curl -i http://localhost:8080/api/routes \
+  -H "X-Demo-User: user2"
+```
+
+Usuarios disponibles: `user1`, `user2`, `user3` y `admin1` (todos con contraseña `password` en Keycloak). El filtro `DemoUserAuthWebFilter`:
+
+1. Pide un JWT real a Keycloak con `grant_type=password`, `client_id=rutatur-api`, `username=<X-Demo-User>` y `password=password`.
+2. Lo guarda en memoria caché por usuario hasta **30 segundos antes de su expiración**.
+3. Inyecta `Authorization: Bearer <jwt>` en el request antes de la cadena de seguridad.
+
+Si ya envías `Authorization`, el filtro no interviene. El header `X-Demo-User` también aparece como parámetro opcional en Swagger UI (`/swagger-ui.html`) para todas las operaciones.
+
+Ejemplo de flujo completo para probar calificaciones y bloqueo:
+
+```bash
+# 1. Compartir ruta y aceptar un match como user1 / user2 (con X-Demo-User)
+# 2. Calificar la contraparte
+curl -i -X POST http://localhost:8080/api/routes/matches/{matchId}/rate \
+  -H "X-Demo-User: user1" -H "Content-Type: application/json" \
+  -d '{"score": 2, "comment": "Poco coincide"}'
+
+# 3. Ver el informe y bloquear al usuario mal calificado como admin1
+curl -i http://localhost:8080/api/admin/ratings/report -H "X-Demo-User: admin1"
+curl -i -X POST http://localhost:8080/api/admin/users/{userId}/block -H "X-Demo-User: admin1"
+```
 
 ---
 
@@ -106,6 +217,10 @@ Usuarios de prueba precargados en Keycloak (realm `rutatur`):
   - Instalación en `.m2`: `mvn -pl rutatur-common install`
 - [x] `api-gateway` (enrutamiento, filtro de seguridad JWT, aislamiento `/internal/**`, `/api/admin/*`)
 - [x] `bruno/` (colección base: `01-auth` + `02-gateway-security` + `03-pois` + `04-itineraries` + `05-route-match` con assertions)
+- [x] `bruno/flujo-calificaciones-admin/` (flujo E2E de calificaciones, informe, bloqueo y desbloqueo con `X-Demo-User`)
+- [x] `bruno/presentacion-demo/` (casos atómicos de éxito, rechazo y administración para la exposición en vivo)
 - [x] `poi-service` (Overpass API, caché geográfico por área, fallback resiliente, `/internal/pois/search`)
 - [x] `itinerary-service` (colaboración con `poi-service`, OSRM + fallback Haversine, CRUD protegido por JWT)
 - [x] `route-match-service` (publicación opt-in, similitud Jaccard + Haversine, patrón State, consentimiento bilateral)
+- [x] Calificaciones post-match, reputación, informe administrativo y bloqueo (`user_profile`, `match_rating`, RN-13 a RN-18)
+- [x] Modo demo multi-usuario en `api-gateway` (`X-Demo-User` + caché de JWT) y documentación Swagger/README

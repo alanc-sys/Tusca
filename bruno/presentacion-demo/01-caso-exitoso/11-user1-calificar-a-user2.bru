@@ -1,0 +1,36 @@
+meta {
+  name: W6-P1-11 User1 califica a user2 con 5 (201)
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{p1MatchId}}/rate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "score": 5,
+    "comment": "Excelente coincidencia de ruta"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("p1LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P1-11 - Status 201 y calificación de user1 con score 5", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().matchId).to.equal(bru.getEnvVar("p1MatchId"));
+    expect(res.getBody().score).to.equal(5);
+    expect(res.getBody().raterUserId).to.be.a("string");
+    expect(res.getBody().ratedUserId).to.be.a("string");
+  });
+}

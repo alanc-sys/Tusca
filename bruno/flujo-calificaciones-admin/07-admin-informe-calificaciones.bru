@@ -1,0 +1,32 @@
+meta {
+  name: W5-07 Admin1 consulta informe de calificaciones (200)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/admin/ratings/report
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+tests {
+  test("W5-07 - Status 200 e informe con la reputación de user2", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body.users).to.be.an("array");
+    expect(body.totalRatings).to.be.at.least(1);
+    expect(body.blockedUsersCount).to.be.at.least(0);
+    expect(body.platformAverageRating).to.be.a("number");
+
+    const user2 = body.users.find(user => user.userId === bru.getEnvVar("user2Id"));
+    expect(user2, "user2 debe figurar en el informe").to.exist;
+    expect(user2.ratingsCount).to.be.at.least(1);
+    expect(user2.averageRating).to.be.a("number");
+    expect(user2.averageRating).to.be.within(1, 5);
+  });
+}

@@ -1,0 +1,32 @@
+meta {
+  name: W5-05 User1 califica a user2 tras match aceptado (201)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/rate
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "score": 2,
+    "comment": "Poco coincide con mis intereses"
+  }
+}
+
+tests {
+  test("W5-05 - Status 201, score 2 y calificación dirigida a user2", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().matchId).to.equal(bru.getEnvVar("matchId"));
+    expect(res.getBody().raterUserId).to.be.a("string");
+    expect(res.getBody().ratedUserId).to.equal(bru.getEnvVar("user2Id"));
+    expect(res.getBody().score).to.equal(2);
+  });
+}

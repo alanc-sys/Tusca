@@ -1,0 +1,28 @@
+meta {
+  name: W6-P1-07 User2 ve sugerencias de match (200)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/suggestions?routeId={{p1Share2}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+script:post-response {
+  bru.setEnvVar("p1LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P1-07 - Status 200 y sugerencia de la ruta de user1", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.be.an("array");
+    const found = res.getBody().some(item => item.targetRouteId === bru.getEnvVar("p1Share1"));
+    expect(found, "user2 debe recibir la ruta compartida por user1").to.equal(true);
+  });
+}

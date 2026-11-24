@@ -1,0 +1,48 @@
+meta {
+  name: W5-04 User1 acepta match y ve contacto de user2 (200)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/{{matchId}}/contact
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+script:pre-request {
+  const base = bru.getEnvVar("baseUrl");
+  const matchId = bru.getEnvVar("matchId");
+
+  // 1) Aceptar el match como user1 (consentimiento bilateral).
+  const accepted = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/routes/matches/" + matchId + "/accept",
+    headers: { "X-Demo-User": "user1" }
+  });
+  if (accepted.status !== 200) {
+    throw new Error("W5-04: POST /matches/" + matchId + "/accept devolvió " + accepted.status);
+  }
+
+  // 2) El GET /contact se ejecuta como petición principal de este .bru.
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    // Reafirma el UUID de user2 desde la contraparte vista por user1.
+    bru.setEnvVar("user2Id", res.getBody().counterpartyUserId);
+  }
+}
+
+tests {
+  test("W5-04 - Status 200 y contacto de user2 revelado", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().matchId).to.equal(bru.getEnvVar("matchId"));
+    expect(res.getBody().counterpartyUserId).to.be.a("string");
+    expect(res.getBody().counterpartyUsername).to.equal("user2");
+  });
+}

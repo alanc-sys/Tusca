@@ -1,0 +1,28 @@
+meta {
+  name: W6-P1-10 User1 ve contacto de user2 (200)
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/routes/matches/{{p1MatchId}}/contact
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+script:post-response {
+  bru.setEnvVar("p1LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P1-10 - Status 200 y contacto revelado", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().matchId).to.equal(bru.getEnvVar("p1MatchId"));
+    expect(res.getBody().counterpartyUsername).to.equal("user2");
+    expect(res.getBody().counterpartyUserId).to.be.a("string");
+  });
+}

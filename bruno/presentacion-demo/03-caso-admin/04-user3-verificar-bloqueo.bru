@@ -1,0 +1,32 @@
+meta {
+  name: W6-P3-04 User3 bloqueado no puede compartir (403)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user3
+}
+
+body:json {
+  {
+    "itineraryId": "{{p3Itin2}}"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-04 - Status 403 y USER_BLOCKED", function() {
+    expect(res.getStatus()).to.equal(403);
+    expect(JSON.stringify(res.getBody())).to.include("USER_BLOCKED");
+  });
+}

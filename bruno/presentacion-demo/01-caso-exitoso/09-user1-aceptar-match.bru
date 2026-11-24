@@ -1,0 +1,26 @@
+meta {
+  name: W6-P1-09 User1 acepta match (200)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/routes/matches/{{p1MatchId}}/accept
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+script:post-response {
+  bru.setEnvVar("p1LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P1-09 - Status 200 y match ACCEPTED", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("ACCEPTED");
+  });
+}

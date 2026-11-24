@@ -1,0 +1,43 @@
+meta {
+  name: W6-P3-02 Admin ve usuarios y promedio actualizado (200)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/admin/ratings/report
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+script:post-response {
+  bru.setEnvVar("p3LastStatus", String(res.getStatus()));
+}
+
+tests {
+  test("W6-P3-02 - Status 200, solo clientes y promedio actualizado", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(body).to.be.an("object");
+
+    const users = body.users || body.userRatings || body.ranking || body.reputationRanking || [];
+    expect(users, "el informe debe incluir usuarios").to.be.an("array");
+    expect(users.every(item => !/admin/i.test(item.username || item.userName || "")),
+      "el informe no debe mostrar administradores").to.equal(true);
+
+    const target = users.find(item =>
+      (item.username || item.userName) === "user3" || item.userId === bru.getEnvVar("p3TargetUserId")
+    );
+    expect(target, "user3 debe aparecer en el informe").to.exist;
+
+    const count = target.ratingsCount ?? target.ratings_count ?? 0;
+    const average = target.averageRating ?? target.average_rating ?? target.avgRating;
+    expect(Number(count), "user3 debe tener al menos una calificación").to.be.at.least(1);
+    expect(Number.isFinite(Number(average))).to.equal(true);
+    expect(Number(average), "user3 debe tener menos de 2 estrellas de promedio").to.be.below(2);
+  });
+}

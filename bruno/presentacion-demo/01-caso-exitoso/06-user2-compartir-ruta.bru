@@ -1,0 +1,36 @@
+meta {
+  name: W6-P1-06 User2 comparte ruta (201)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user2
+}
+
+body:json {
+  {
+    "itineraryId": "{{p1Itin2}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("p1Share2", res.getBody().id);
+  }
+}
+
+tests {
+  test("W6-P1-06 - Status 201 y ruta activa de user2", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().active).to.equal(true);
+    expect(res.getBody().itineraryId).to.equal(bru.getEnvVar("p1Itin2"));
+    expect(bru.getEnvVar("p1Share2")).to.equal(res.getBody().id);
+  });
+}

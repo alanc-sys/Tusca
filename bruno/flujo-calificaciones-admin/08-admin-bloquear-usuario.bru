@@ -1,0 +1,23 @@
+meta {
+  name: W5-08 Admin1 bloquea a user2 (200)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{user2Id}}/block
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+tests {
+  test("W5-08 - Status 200 y user2 queda BLOCKED", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().userId).to.equal(bru.getEnvVar("user2Id"));
+    expect(res.getBody().status).to.equal("BLOCKED");
+  });
+}

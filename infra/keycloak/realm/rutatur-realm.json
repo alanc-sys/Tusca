@@ -41,6 +41,27 @@
       "attributes": {
         "post.logout.redirect.uris": "+"
       }
+    },
+    {
+      "clientId": "rutatur-api",
+      "name": "RutaTur Demo API Client",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:8180/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      }
     }
   ],
   "users": [
@@ -91,6 +112,79 @@
         {
           "type": "password",
           "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_ADMIN",
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "user1",
+      "email": "user1@rutatur.com",
+      "firstName": "Demo",
+      "lastName": "User One",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "user2",
+      "email": "user2@rutatur.com",
+      "firstName": "Demo",
+      "lastName": "User Two",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "user3",
+      "email": "user3@rutatur.com",
+      "firstName": "Demo",
+      "lastName": "User Three",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ROLE_USER"
+      ]
+    },
+    {
+      "username": "admin1",
+      "email": "admin1@rutatur.com",
+      "firstName": "Demo",
+      "lastName": "Admin One",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
           "temporary": false
         }
       ],

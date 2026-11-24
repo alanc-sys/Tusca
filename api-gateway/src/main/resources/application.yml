@@ -4,6 +4,11 @@ server:
 rutatur:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
+  demo:
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://keycloak:8080/realms/rutatur/protocol/openid-connect/token}
+    client-id: ${DEMO_CLIENT_ID:rutatur-api}
+    password: ${DEMO_PASSWORD:password}
+    cache-skew-seconds: ${DEMO_CACHE_SKEW_SECONDS:30}
 
 spring:
   application:
@@ -28,6 +33,12 @@ spring:
           uri: ${ROUTE_MATCH_SERVICE_URI:http://route-match-service:8083}
           predicates:
             - Path=/api/routes/**
+        # W3: informe y bloqueo viven en route-match-service. /api/admin/routes y
+        # /api/admin/metrics siguen siendo servidos por el AdminController del gateway.
+        - id: route-match-admin
+          uri: ${ROUTE_MATCH_SERVICE_URI:http://route-match-service:8083}
+          predicates:
+            - Path=/api/admin/ratings/**,/api/admin/users/**
         - id: poi-service-docs
           uri: ${POI_SERVICE_URI:http://poi-service:8081}
           predicates:

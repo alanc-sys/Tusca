@@ -14,8 +14,10 @@ import com.rutatur.match.dto.ShareRouteRequest;
 import com.rutatur.match.dto.SharedRouteResponse;
 import com.rutatur.match.entity.RouteMatchEntity;
 import com.rutatur.match.entity.SharedRouteEntity;
+import com.rutatur.match.entity.UserProfileStatus;
 import com.rutatur.match.repository.RouteMatchRepository;
 import com.rutatur.match.repository.SharedRouteRepository;
+import com.rutatur.match.repository.UserProfileRepository;
 import com.rutatur.match.state.MatchState;
 import com.rutatur.match.state.MatchStateFactory;
 import org.springframework.stereotype.Service;
@@ -35,18 +37,21 @@ public class RouteMatchService {
     private final ItineraryInternalClient itineraryClient;
     private final SimilarityCalculator similarityCalculator;
     private final MatchStateFactory stateFactory;
+    private final UserProfileRepository userProfileRepository;
 
     public RouteMatchService(
             SharedRouteRepository sharedRouteRepository,
             RouteMatchRepository routeMatchRepository,
             ItineraryInternalClient itineraryClient,
             SimilarityCalculator similarityCalculator,
-            MatchStateFactory stateFactory) {
+            MatchStateFactory stateFactory,
+            UserProfileRepository userProfileRepository) {
         this.sharedRouteRepository = sharedRouteRepository;
         this.routeMatchRepository = routeMatchRepository;
         this.itineraryClient = itineraryClient;
         this.similarityCalculator = similarityCalculator;
         this.stateFactory = stateFactory;
+        this.userProfileRepository = userProfileRepository;
     }
 
     @Transactional
@@ -55,6 +60,7 @@ public class RouteMatchService {
             String userId,
             String username,
             String email) {
+        assertNotBlocked(userId);
         ItinerarySnapshotDto itinerary = itineraryClient.getItinerary(request.itineraryId());
 
         if (!userId.equals(itinerary.userId())) {
@@ -132,6 +138,7 @@ public class RouteMatchService {
 
     @Transactional
     public RouteMatchResponse requestMatch(MatchRequestDto request, String userId) {
+        assertNotBlocked(userId);
         SharedRouteEntity myRoute = findSharedRouteOrThrow(request.myRouteId());
         SharedRouteEntity targetRoute = findSharedRouteOrThrow(request.targetRouteId());
 
@@ -188,6 +195,7 @@ public class RouteMatchService {
 
     @Transactional
     public RouteMatchResponse acceptMatch(UUID matchId, String userId) {
+        assertNotBlocked(userId);
         RouteMatchEntity match = findMatchOrThrow(matchId);
         MatchState currentState = stateFactory.of(match.getStatus());
         currentState.accept(match, userId);
@@ -252,6 +260,25 @@ public class RouteMatchService {
                 .orElseThrow(() -> new RutaturException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Match no encontrado: " + matchId));
+    }
+
+    /** RN-17: bloquea share/request/accept si el perfil del usuario está {@code BLOCKED}. */
+    private void assertNotBlocked(String userId) {
+        if (userId == null) {
+            return;
+        }
+        UUID userUuid;
+        try {
+            userUuid = UUID.fromString(userId);
+        } catch (IllegalArgumentException ex) {
+            // Ids legacy no UUID no tienen perfil user_profile: no pueden estar bloqueados.
+            return;
+        }
+        userProfileRepository.findById(userUuid)
+                .filter(profile -> profile.getStatus() == UserProfileStatus.BLOCKED)
+                .ifPresent(profile -> {
+                    throw new RutaturException(ErrorCode.USER_BLOCKED, "La cuenta del usuario está bloqueada");
+                });
     }
 
     private void verifyParticipant(RouteMatchEntity match, String userId) {

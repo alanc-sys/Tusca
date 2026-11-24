@@ -15,8 +15,11 @@ import com.rutatur.match.dto.ShareRouteRequest;
 import com.rutatur.match.dto.SharedRouteResponse;
 import com.rutatur.match.entity.RouteMatchEntity;
 import com.rutatur.match.entity.SharedRouteEntity;
+import com.rutatur.match.entity.UserProfileEntity;
+import com.rutatur.match.entity.UserProfileStatus;
 import com.rutatur.match.repository.RouteMatchRepository;
 import com.rutatur.match.repository.SharedRouteRepository;
+import com.rutatur.match.repository.UserProfileRepository;
 import com.rutatur.match.state.MatchStateFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +53,9 @@ class RouteMatchServiceTest {
     @Mock
     private ItineraryInternalClient itineraryClient;
 
+    @Mock
+    private UserProfileRepository userProfileRepository;
+
     private RouteMatchService service;
 
     @BeforeEach
@@ -59,7 +65,8 @@ class RouteMatchServiceTest {
                 routeMatchRepository,
                 itineraryClient,
                 new SimilarityCalculator(),
-                new MatchStateFactory());
+                new MatchStateFactory(),
+                userProfileRepository);
     }
 
     @Test
@@ -187,6 +194,46 @@ class RouteMatchServiceTest {
         RutaturException terminalEx = assertThrows(RutaturException.class,
                 () -> service.rejectMatch(matchId, "user-2"));
         assertEquals(ErrorCode.INVALID_STATE_TRANSITION, terminalEx.getErrorCode());
+    }
+
+    @Test
+    void blockedUserCannotShareRoute() {
+        UUID userId = UUID.randomUUID();
+        stubBlocked(userId);
+
+        RutaturException ex = assertThrows(RutaturException.class,
+                () -> service.shareRoute(new ShareRouteRequest(UUID.randomUUID()), userId.toString(), "blocked", null));
+
+        assertEquals(ErrorCode.USER_BLOCKED, ex.getErrorCode());
+    }
+
+    @Test
+    void blockedUserCannotRequestMatch() {
+        UUID userId = UUID.randomUUID();
+        stubBlocked(userId);
+
+        RutaturException ex = assertThrows(RutaturException.class,
+                () -> service.requestMatch(
+                        new MatchRequestDto(UUID.randomUUID(), UUID.randomUUID()), userId.toString()));
+
+        assertEquals(ErrorCode.USER_BLOCKED, ex.getErrorCode());
+    }
+
+    @Test
+    void blockedUserCannotAcceptMatch() {
+        UUID userId = UUID.randomUUID();
+        stubBlocked(userId);
+
+        RutaturException ex = assertThrows(RutaturException.class,
+                () -> service.acceptMatch(UUID.randomUUID(), userId.toString()));
+
+        assertEquals(ErrorCode.USER_BLOCKED, ex.getErrorCode());
+    }
+
+    private void stubBlocked(UUID userId) {
+        UserProfileEntity blocked = new UserProfileEntity(userId, "blocked", "blocked@rutatur.local");
+        blocked.setStatus(UserProfileStatus.BLOCKED);
+        when(userProfileRepository.findById(userId)).thenReturn(Optional.of(blocked));
     }
 
     private SharedRouteEntity buildSharedRoute(

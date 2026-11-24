@@ -1,0 +1,43 @@
+meta {
+  name: W6-P1-02 User1 guarda itinerario (201)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/itineraries
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "name": "Demo P1 - Ruta de user1",
+    "startPoint": { "latitude": -31.4170, "longitude": -64.1830 },
+    "transportMode": "WALKING",
+    "totalDurationMinutes": 95,
+    "stops": [
+      { "poiId": "node-demo1-1", "visitOrder": 1, "stayDurationMinutes": 30, "travelTimeToNextMinutes": 5, "distanceToNextMeters": 250 },
+      { "poiId": "node-demo1-2", "visitOrder": 2, "stayDurationMinutes": 60, "travelTimeToNextMinutes": 0, "distanceToNextMeters": 0 }
+    ]
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("p1Itin1", res.getBody().id);
+  }
+}
+
+tests {
+  test("W6-P1-02 - Status 201 y captura del itinerario de user1", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().id).to.be.a("string");
+    expect(res.getBody().userId).to.be.a("string");
+    expect(bru.getEnvVar("p1Itin1")).to.equal(res.getBody().id);
+  });
+}

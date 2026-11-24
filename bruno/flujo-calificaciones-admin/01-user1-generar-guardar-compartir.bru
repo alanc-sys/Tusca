@@ -1,0 +1,83 @@
+meta {
+  name: W5-01 User1 genera, guarda y comparte ruta (201)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/routes/share
+  body: json
+  auth: none
+}
+
+headers {
+  X-Demo-User: user1
+}
+
+body:json {
+  {
+    "itineraryId": "{{itineraryId}}"
+  }
+}
+
+script:pre-request {
+  const base = bru.getEnvVar("baseUrl");
+  const headers = { "Content-Type": "application/json", "X-Demo-User": "user1" };
+
+  // 1) Generar itinerario (endpoint público): valida que el optimizador responda.
+  const generated = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itinerary/generate",
+    headers: headers,
+    data: {
+      startPoint: { latitude: -31.4170, longitude: -64.1830 },
+      availableTimeMinutes: 180,
+      radiusMeters: 2000,
+      transportMode: "WALKING",
+      categories: ["park", "museum", "cafe"]
+    }
+  });
+  if (generated.status !== 200) {
+    throw new Error("W5-01: /api/itinerary/generate devolvió " + generated.status);
+  }
+
+  // 2) Guardar con POIs semilla (idénticos a user2) para garantizar similitud >= umbral.
+  const saved = await bru.sendRequest({
+    method: "POST",
+    url: base + "/api/itineraries",
+    headers: headers,
+    data: {
+      name: "Ruta demo User 1",
+      startPoint: { latitude: -31.4170, longitude: -64.1830 },
+      transportMode: "WALKING",
+      totalDurationMinutes: 95,
+      stops: [
+        { poiId: "node-seed-1", visitOrder: 1, stayDurationMinutes: 30, travelTimeToNextMinutes: 5, distanceToNextMeters: 250 },
+        { poiId: "node-seed-2", visitOrder: 2, stayDurationMinutes: 60, travelTimeToNextMinutes: 0, distanceToNextMeters: 0 }
+      ]
+    }
+  });
+  if (saved.status !== 201) {
+    throw new Error("W5-01: POST /api/itineraries devolvió " + saved.status);
+  }
+  bru.setEnvVar("itineraryId", saved.data.id);
+
+  // 3) El share se ejecuta como petición principal de este .bru.
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setEnvVar("sharedRoute1Id", res.getBody().id);
+    bru.setEnvVar("sharedRouteId", res.getBody().id);
+  }
+}
+
+tests {
+  test("W5-01 - Status 201 y ruta de user1 compartida activamente", function() {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().active).to.equal(true);
+    expect(res.getBody().itineraryId).to.equal(bru.getEnvVar("itineraryId"));
+    expect(res.getBody().id).to.equal(bru.getEnvVar("sharedRoute1Id"));
+    expect(res.getBody().id).to.equal(bru.getEnvVar("sharedRouteId"));
+  });
+}

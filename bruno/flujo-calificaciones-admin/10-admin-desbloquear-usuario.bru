@@ -1,0 +1,23 @@
+meta {
+  name: W5-10 Admin1 desbloquea a user2 (200)
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users/{{user2Id}}/unblock
+  body: none
+  auth: none
+}
+
+headers {
+  X-Demo-User: admin1
+}
+
+tests {
+  test("W5-10 - Status 200 y user2 vuelve a ACTIVE", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().userId).to.equal(bru.getEnvVar("user2Id"));
+    expect(res.getBody().status).to.equal("ACTIVE");
+  });
+}
