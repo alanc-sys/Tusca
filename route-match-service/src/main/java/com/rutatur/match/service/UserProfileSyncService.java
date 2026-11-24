@@ -1,5 +1,6 @@
 package com.rutatur.match.service;
 
+import com.rutatur.common.security.KeycloakJwtRolesExtractor;
 import com.rutatur.match.entity.UserProfileEntity;
 import com.rutatur.match.repository.UserProfileRepository;
 import org.slf4j.Logger;
@@ -8,8 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -47,32 +47,30 @@ public class UserProfileSyncService {
             return;
         }
 
-        String username = valueOrDefault(jwt.getClaimAsString("preferred_username"), jwt.getSubject());
-        String email = jwt.getClaimAsString("email");
+        String normalizedUsername = trim(valueOrDefault(jwt.getClaimAsString("preferred_username"), jwt.getSubject()), USERNAME_MAX_LENGTH);
+        String normalizedEmail = trim(jwt.getClaimAsString("email"), EMAIL_MAX_LENGTH);
         boolean admin = hasAdminRole(jwt);
 
         userProfileRepository.findById(userId).ifPresentOrElse(
                 profile -> {
-                    profile.setUsername(trim(username, USERNAME_MAX_LENGTH));
-                    profile.setEmail(trim(email, EMAIL_MAX_LENGTH));
-                    profile.setAdmin(admin);
+                    // Evita marcar la entidad como dirty en cada request cuando la identidad no cambió.
+                    if (!Objects.equals(profile.getUsername(), normalizedUsername)
+                            || !Objects.equals(profile.getEmail(), normalizedEmail)
+                            || profile.isAdmin() != admin) {
+                        profile.setUsername(normalizedUsername);
+                        profile.setEmail(normalizedEmail);
+                        profile.setAdmin(admin);
+                    }
                 },
                 () -> {
-                    UserProfileEntity profile = new UserProfileEntity(
-                            userId,
-                            trim(username, USERNAME_MAX_LENGTH),
-                            trim(email, EMAIL_MAX_LENGTH));
+                    UserProfileEntity profile = new UserProfileEntity(userId, normalizedUsername, normalizedEmail);
                     profile.setAdmin(admin);
                     userProfileRepository.save(profile);
                 });
     }
 
     private static boolean hasAdminRole(Jwt jwt) {
-        Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-        if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
-            return false;
-        }
-        return roles.contains("ROLE_ADMIN");
+        return KeycloakJwtRolesExtractor.extractRoles(jwt.getClaims()).contains("ROLE_ADMIN");
     }
 
     private static String valueOrDefault(String value, String defaultValue) {

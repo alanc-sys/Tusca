@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rutatur.common.dto.ApiError;
 import com.rutatur.common.exception.ErrorCode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -32,10 +33,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * Modo demo: si no viene {@code Authorization} pero sí {@code X-Demo-User}, obtiene un JWT real de
  * Keycloak con el flujo {@code password}, lo cachea hasta 30 s antes de expirar y lo inyecta en el
  * request antes de la cadena de seguridad (RN-17 / modo demo de la spec).
+ *
+ * <p>Usa {@code @Order(-200)} para ejecutarse estrictamente antes de {@code WebFilterChainProxy}
+ * de Spring Security (que corre en {@code -100}), evitando empates dependientes del orden de beans.
  */
 @Component
 @Profile("demo")
-@Order(-100)
+@Order(-200)
 public class DemoUserAuthWebFilter implements WebFilter {
 
     public static final String DEMO_USER_HEADER = "X-Demo-User";
@@ -48,6 +52,7 @@ public class DemoUserAuthWebFilter implements WebFilter {
     private final long cacheSkewSeconds;
     private final Map<String, CachedToken> tokenCache = new ConcurrentHashMap<>();
 
+    @Autowired
     public DemoUserAuthWebFilter(
             WebClient.Builder webClientBuilder,
             ObjectMapper objectMapper,

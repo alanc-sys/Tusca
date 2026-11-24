@@ -78,7 +78,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(
             DataIntegrityViolationException ex, HttpServletRequest request) {
-        log.warn("Data integrity violation on {}: {}", request.getRequestURI(), ex.getMostSpecificCause().getMessage());
+        String causeMessage = ex.getMostSpecificCause().getMessage();
+        log.warn("Data integrity violation on {}: {}", request.getRequestURI(), causeMessage);
+        if (causeMessage != null && causeMessage.contains("uk_match_rating_rater")) {
+            ApiError conflict = ApiError.of(
+                    ErrorCode.RATING_ALREADY_EXISTS,
+                    "Este match ya fue calificado por el usuario",
+                    request.getRequestURI());
+            return ResponseEntity.status(ErrorCode.RATING_ALREADY_EXISTS.getHttpStatus()).body(conflict);
+        }
         ApiError error = ApiError.of(
                 ErrorCode.VALIDATION_ERROR,
                 "Los datos enviados no cumplen las restricciones de integridad",

@@ -69,6 +69,24 @@ class UserProfileSyncServiceTest {
     }
 
     @Test
+    void marksProfileAsAdminWhenJwtHasUnprefixedAdminRole() {
+        UUID userId = UUID.randomUUID();
+        when(userProfileRepository.findById(userId)).thenReturn(Optional.empty());
+        Jwt adminJwt = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .claim("sub", userId.toString())
+                .claim("preferred_username", "admin1")
+                .claim("realm_access", Map.of("roles", List.of("ADMIN")))
+                .build();
+
+        service().sync(adminJwt);
+
+        ArgumentCaptor<UserProfileEntity> captor = ArgumentCaptor.forClass(UserProfileEntity.class);
+        verify(userProfileRepository).save(captor.capture());
+        assertEquals(true, captor.getValue().isAdmin());
+    }
+
+    @Test
     void updatesIdentityButKeepsBlockedStatusAndReputation() {
         UUID userId = UUID.randomUUID();
         UserProfileEntity existing = new UserProfileEntity(userId, "old", "old@rutatur.com");
